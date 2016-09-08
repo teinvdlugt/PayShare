@@ -2,6 +2,7 @@ package com.pablotein.android.payshare;
 
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
@@ -77,22 +78,56 @@ public class ConnectionService extends Service {
         public void run() {
             try {
                 InputStream inputSream = socket.getInputStream();
-                switch (inputSream.read()) {
-                    case 0:
-                        Log.v(TAG, "Got answer to request " + String.valueOf(inputSream.read()) + ": " + String.valueOf(inputSream.read()));
-                        break;
-                    case 2:
-                        inputSream.read();//dismiss request code
-                        char[] buffer = new char[32];
-                        for(char vez=0;vez<24;vez++){buffer[vez]=(char)inputSream.read();}
-                        String id = String.copyValueOf(buffer,0,24);
-                        for(char vez=0;vez<32;vez++){buffer[vez]=(char)inputSream.read();}
-                        String key = String.copyValueOf(buffer);
+                while(!Thread.interrupted()) {
+                    char command = (char) inputSream.read();
+                    Log.v(TAG, "Received: " + String.valueOf((int) command));
+                    switch (command) {
+                        case 0:
+                            Log.v(TAG, "Got answer to request " + String.valueOf(inputSream.read()) + ": " + String.valueOf(inputSream.read()));
+                            break;
+                        case 2:
+                            inputSream.read();//dismiss request code
+                            char[] buffer = new char[32];
+                            for (char vez = 0; vez < 24; vez++) {
+                                buffer[vez] = (char) inputSream.read();
+                            }
+                            String id = String.copyValueOf(buffer, 0, 24);
+                            for (char vez = 0; vez < 32; vez++) {
+                                buffer[vez] = (char) inputSream.read();
+                            }
+                            String key = String.copyValueOf(buffer);
 
-                        PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().putString("login_id",id).putString("login_key",key).apply();
-                        loginListener.onLogin();
-                        Log.v(TAG,"Logged in: "+id+" - "+key);
+                            PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().putString("login_id", id).putString("login_key", key).apply();
+                            loginListener.onLogin();
+                            Log.v(TAG, "Logged in: " + id + " - " + key);
+                            break;
+                        case 3:
+                            inputSream.read();
+                            if (inputSream.read() != 1) {
+                                //TODO handle error logging in
+                            }
+                            break;
+                        case 4:
+                            inputSream.read();//dismiss request code
+                            char size = (char) inputSream.read();
+                            buffer = new char[size];
+                            for (char vez = 0; vez < size; vez++) {
+                                buffer[vez] = (char) inputSream.read();
+                            }
+                            String name = String.copyValueOf(buffer);
+                            size = (char) inputSream.read();
+                            buffer = new char[size];
+                            for (char vez = 0; vez < size; vez++) {
+                                buffer[vez] = (char) inputSream.read();
+                            }
+                            String email = String.copyValueOf(buffer);
+
+                            PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().putString("login_name", name).putString("login_email", email).apply();
+                            Log.v(TAG, "Logged in: " + name + " - " + email);
+                            break;
+                    }
                 }
+                socket.close();
             } catch (IOException e) {
                 e.printStackTrace();
                 try {
@@ -130,6 +165,14 @@ public class ConnectionService extends Service {
                             }
                         });
                         inputListenerThread.start();
+                        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(ConnectionService.this);
+                        if(preferences.contains("login_id")) {
+                            ByteBuffer buffer = ByteBuffer.allocate(32 + 24 + 2);
+                            buffer.put(new byte[]{3, 0});
+                            buffer.put(preferences.getString("login_id",null).getBytes());
+                            buffer.put(preferences.getString("login_key",null).getBytes());
+                            socket.getOutputStream().write(buffer.array());
+                        }
                     }
                     byte[] data;
                     switch (request) {
@@ -157,6 +200,7 @@ public class ConnectionService extends Service {
                     } catch (IOException e2) {
                         e2.printStackTrace();
                     }
+                    inputListenerThread.interrupt();
                     mainThreadHandler.post(new Runnable() {
                         @Override
                         public void run() {

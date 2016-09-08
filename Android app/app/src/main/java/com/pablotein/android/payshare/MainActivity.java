@@ -4,6 +4,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
@@ -51,6 +52,12 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private void updateNameEmail(SharedPreferences sharedPreferences){
+        String text = "Name: "+sharedPreferences.getString("login_name",null)+", email: "+sharedPreferences.getString("login_email",null);
+        ((TextView)findViewById(R.id.infoText)).setText(text);
+        Log.v(TAG,"UPDATE: "+text);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -60,7 +67,15 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(this, ConnectionService.class);
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
-        if(PreferenceManager.getDefaultSharedPreferences(this).getString("login_id",null) == null || true){//Force login screen to show even if already logged for debugging purposes
+        updateNameEmail(PreferenceManager.getDefaultSharedPreferences(this));
+
+        PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(new SharedPreferences.OnSharedPreferenceChangeListener() {
+            @Override
+            public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+                    updateNameEmail(sharedPreferences);
+            }
+        });
+        if(!PreferenceManager.getDefaultSharedPreferences(this).contains("login_id")/* || true*/){//Force login screen to show even if already logged for debugging purposes
             Intent startLoginIntent = new Intent(this,LoginActivity.class);
             startActivity(startLoginIntent);
         }

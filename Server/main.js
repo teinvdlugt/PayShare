@@ -55,6 +55,24 @@ if (cluster.isMaster) {
 		
 		sessionSub = null;
 		
+		function sendInfo(id){
+			db_users.find({sub:sessionSub}).toArray(function(error,result){
+						if(error != null)throw new Error("Couldn't get from db: "+error);
+						console.log("Sending info");
+						result = result[0];
+						answer = Buffer.alloc(2+2+result.name.length+result.email.length);
+						answer[0] = 4;
+						answer[1] = id;
+						answer[2] = result.name.length;
+						offset = answer[2]+3;
+						answer.write(result.name,3,offset);
+						answer[offset] = result.email.length;
+						answer.write(result.email,offset+1,offset+1+answer[offset]);
+						socket.write(answer);
+						console.log("Info: "+JSON.stringify(answer));
+					});
+		}
+		
 		socket.on('data', function(data) {
 			try{
 				//if(data.length<2){socket.endError();return;};
@@ -81,11 +99,11 @@ if (cluster.isMaster) {
 						try{
 							if (!error) {
 								if(debug)console.log("User info: "+JSON.stringify(tokenInfo));
-								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,given_name:tokenInfo.given_name,email:tokenInfo.email}},{upsert:true},function(error,results){
+								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email}},{upsert:true},function(error,results){
 									if(error != null)throw new Error("Couldn't put into db: "+error);
 									db_sessions.insert({sub:tokenInfo.sub,key:crypto.randomBytes(16).toString('hex')},function(error,inserted){
 										if(error != null)throw new Error("Couldn't put into db: "+error);
-										console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
+										if(debug)console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
 										answer = Buffer.allocUnsafe(32+24+2);
 										answer[0] = 2;
 										answer[1] = data[1];
@@ -93,6 +111,7 @@ if (cluster.isMaster) {
 										answer.write(inserted.ops[0].key,26,inserted.ops[0].key.length);
 										socket.write(answer);
 										sessionSub = inserted.ops[0].sub;
+										sendInfo(0);
 									});
 									//if(debug)console.log(results);
 								});
@@ -118,17 +137,36 @@ if (cluster.isMaster) {
 					});
 					if(debug)console.log("Login token: "+token);
 					break;
+				case 3:
+					if(data.length!=32+24+2) throw new Error("Size not match");
+					id = data.toString('utf8',2,26);
+					key = data.toString('utf8',26,58);
+					db_sessions.find({_id:mongo.ObjectId(id),key:key}).toArray(function(error,result){
+						if(error != null)throw new Error("Couldn't get from db: "+error);
+						if(result.length < 1){
+							answer = Buffer.from([3,data[1],0]);
+						}else{
+							sessionSub = result[0].sub;
+							if(debug)console.log("Session sub: "+sessionSub);
+							answer = Buffer.from([3,data[1],1]);
+					sendInfo(data[1]);
+						}
+					});
+					break;
+					case 4:
+					sendInfo(data[1]);
+					break;
 				}
-				if(typeof answer !== 'undefined')socket.write(answer);
+				if(typeof answer === 'Buffer')socket.write(answer);
 				
 				if(debug){
 					console.log("Received "+data.length+" bytes");
-					message = "Data: ";
+					/*message = "Data: ";
 					for(a=0;a < data.length;a++){
 						message += data.readUInt8(a)+", ";
 					}
 					console.log(message);
-					console.log(answer);
+					console.log(answer);*/
 				}
 			}catch(error){
 				handleError(error);
