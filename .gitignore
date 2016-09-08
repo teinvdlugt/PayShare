@@ -1,0 +1,8 @@
+*.iml
+Android app/.gradle
+Android app/.idea
+Android app/local.properties
+Android app/.DS_Store
+Android app/build
+Android app/captures
+Server/node_modules

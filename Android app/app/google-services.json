@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "851535968316",
+    "project_id": "firebase-payshare"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:851535968316:android:80c33f271a960ea8",
+        "android_client_info": {
+          "package_name": "com.pablotein.android.payshare"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "851535968316-ges5cgnf3gae7kle2amacue9ovnsn8pn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pablotein.android.payshare",
+            "certificate_hash": "EEBA153384C370F5D9A8F50D36ED0C864BD16E15"
+          }
+        },
+        {
+          "client_id": "851535968316-cqvil0i6ej1mcgs3314bqv0k460i6j4f.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlPhmvs5fKN5k7W7kmKnt3pqM_RsCm1oY"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
