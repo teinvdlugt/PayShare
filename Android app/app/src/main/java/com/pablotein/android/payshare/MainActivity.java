@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
@@ -13,6 +14,7 @@ import android.os.Bundle;
 import android.telecom.Connection;
 import android.util.Log;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.google.android.gms.auth.api.Auth;
@@ -37,13 +39,29 @@ public class MainActivity extends AppCompatActivity {
         public void onDisconnected() {
             ((TextView) findViewById(R.id.testText)).setText("Disconnected");
         }
+
+        @Override
+        public void onConnecting() {
+            ((TextView) findViewById(R.id.testText)).setText("Connecting");
+        }
+    };
+    ConnectionService.OnImageDownloadedListener imageDownloadedListener = new ConnectionService.OnImageDownloadedListener() {
+        @Override
+        public void onImageDownloaded(String id, Bitmap image) {
+            ((ImageView)findViewById(R.id.profileImage)).setImageBitmap(image);
+            updateNameEmail(PreferenceManager.getDefaultSharedPreferences(MainActivity.this));//TODO solve, Quick fix for solving preference change listener not being called
+        }
     };
     ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             connectionServiceBinder = (ConnectionService.ConnectionServiceBinder) service;
             connectionServiceBinder.addOnConnectionChangeListener(connectionChangeListener);
-            connectionServiceBinder.sendRequest(ConnectionService.REQUEST_INFO, null);//Send request to check connection
+            connectionServiceBinder.addOnImageDownloadedListener(imageDownloadedListener);
+            connectionServiceBinder.sendRequest(ConnectionService.REQUEST_INFO, null);//Request server version (as test)
+            /*Bundle extras = new Bundle();
+            extras.putString(ConnectionService.EXTRA_USER_ID,PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("user_id",null));
+            if(extras.getString(ConnectionService.EXTRA_USER_ID) != null)connectionServiceBinder.sendRequest(ConnectionService.REQUEST_IMAGE,extras);*/
         }
 
         @Override
@@ -53,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
     };
 
     private void updateNameEmail(SharedPreferences sharedPreferences){
-        String text = "Name: "+sharedPreferences.getString("login_name",null)+", email: "+sharedPreferences.getString("login_email",null);
+        String text = "Name: "+sharedPreferences.getString("user_name",null)+", email: "+sharedPreferences.getString("user_email",null);
         ((TextView)findViewById(R.id.infoText)).setText(text);
         Log.v(TAG,"UPDATE: "+text);
     }
@@ -82,32 +100,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == 0) {
-            GoogleSignInResult result = Auth.GoogleSignInApi.getSignInResultFromIntent(data);
-            if (result.isSuccess()) {
-                GoogleSignInAccount acct = result.getSignInAccount();
-                Log.v(TAG, "Login OK " + acct.getEmail() + " - " + acct.getIdToken());
-                Bundle extras = new Bundle();
-                extras.putString(ConnectionService.EXTRA_LOGIN_GOOGLE_TOKEN, acct.getIdToken());
-                connectionServiceBinder.sendRequest(ConnectionService.REQUEST_LOGIN_GOOGLE, extras);
-                // Signed in successfully, show authenticated UI.
-                /*GoogleSignInAccount acct = result.getSignInAccount();
-                mStatusTextView.setText(getString(R.string.signed_in_fmt, acct.getDisplayName()));
-                updateUI(true);*/
-            } else {
-                Log.v(TAG, "Login ERROR");
-                // Signed out, show unauthenticated UI.
-                //updateUI(false);
-            }
-        }
-    }
-
-    @Override
     protected void onDestroy() {
         super.onDestroy();
         connectionServiceBinder.removeOnConnectionChangeListener(connectionChangeListener);
+        connectionServiceBinder.removeOnImageDownloadedListener(imageDownloadedListener);
         unbindService(serviceConnection);
     }
 }

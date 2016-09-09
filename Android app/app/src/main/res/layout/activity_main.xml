@@ -21,4 +21,9 @@
         android:layout_height="wrap_content"
         android:id="@+id/infoText"
         android:text="test"/>
+
+    <ImageView
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:id="@+id/profileImage"/>
 </LinearLayout>

@@ -20,15 +20,29 @@ const GOOGLE_LOGIN_KEY = "851535968316-cqvil0i6ej1mcgs3314bqv0k460i6j4f.apps.goo
 const debug = process.argv.indexOf("-d")>-1;
 const permisive = process.argv.indexOf("-p")>-1;
 const singleThreaded = process.argv.indexOf("-s")>-1;
+const completeDebug = process.argv.indexOf("-c")>-1;
 var db, db_users,db_sessions;
 
 if (cluster.isMaster) {
 	if(debug)console.log("Running in debug mode");
 	if(permisive)console.log("Warning!! Running in permisive mode, server is vulnerable to attacks");
 	if(singleThreaded)console.log("Running in signle-thread mode, performance may decrease");
-	// Create as much threads as cores of the cpu to distribute load
-	for (var i = 0; i < (singleThreaded?1:numCPUs); i++) {
-		cluster.fork();
+	if(completeDebug)console.log("Running in complete debug mode");
+	console.log("Loading...");
+	if(!debug){process.stdout.write("<");animation = setInterval(function(){process.stdout.write("-");},20)};
+	
+	var ready = 0;
+	for (var i = 0; i < (singleThreaded?1:numCPUs); i++) {// Create as much threads as cores of the cpu to distribute load
+		child = cluster.fork();
+		child.on('message',function(message){
+			if(message == "ready"){
+				ready++;
+				if(ready == numCPUs){
+					if(!debug){clearInterval(animation);console.log(">");}
+					console.log("All ready! =)");
+				}
+			}
+		});
 	}
 
 	cluster.on('exit', (worker, code, signal) => {
@@ -57,43 +71,61 @@ if (cluster.isMaster) {
 		
 		function sendInfo(id){
 			db_users.find({sub:sessionSub}).toArray(function(error,result){
-						if(error != null)throw new Error("Couldn't get from db: "+error);
-						console.log("Sending info");
-						result = result[0];
-						answer = Buffer.alloc(2+2+result.name.length+result.email.length);
-						answer[0] = 4;
-						answer[1] = id;
-						answer[2] = result.name.length;
-						offset = answer[2]+3;
-						answer.write(result.name,3,offset);
-						answer[offset] = result.email.length;
-						answer.write(result.email,offset+1,offset+1+answer[offset]);
-						socket.write(answer);
-						console.log("Info: "+JSON.stringify(answer));
-					});
+				if(error != null)throw new Error("Couldn't get from db: "+error);
+				//console.log("Sending info");
+				result = result[0];
+				answer = Buffer.alloc(4+24+result.name.length+result.email.length);
+				answer[0] = 5;
+				answer[1] = id;
+				answer.write(result._id.toString(),2,24);
+				answer[26] = result.name.length;
+				offset = answer[26]+27;
+				answer.write(result.name,27,offset);
+				answer[offset] = result.email.length;
+				answer.write(result.email,offset+1,offset+1+answer[offset]);
+				send(answer);
+				//console.log("Info: "+JSON.stringify(answer));
+			});
 		}
 		
-		socket.on('data', function(data) {
+		function send(answer){
+				if(debug)console.log("Sent "+answer.length+" bytes"+(completeDebug?": "+JSON.stringify(answer):""));
+				socket.write(answer);
+		}
+		
+		function processData(data){
 			try{
+			if(debug)
+				console.log("Proccess "+data.length+" bytes"+(completeDebug?": "+JSON.stringify(data):""));
 				//if(data.length<2){socket.endError();return;};
 				command = data.readUInt8(0);
 				answer = null;
 				switch(command){
 				case 0://Info request
+					limit = 2;
+					if(data.length > limit){processData(data.slice(limit));}
 					answer = Buffer.from([0,data.readUInt8(1),VERSION]);//Answer requested command, request ID and VERSION
 					break;
 				case 1://Echo (test) request
 					//if(data.length<4){socket.endError();return;};
 					size = data.readUInt16BE(2);
 					if(size > data.length-4) throw new Error("Size was bigger than available");
+					limit = 4+size;
+					if(data.length > limit){processData(data.slice(limit));}
 					answer = Buffer.allocUnsafe(size+2);
 					answer[0] = 1;
 					answer[1] = data[1];
 					data.copy(answer,2,4,size+4);
 					break;
-				case 2:
+					case 2:
+					socket.end();
+					socket.destroy();
+					break;
+				case 3:
 					size = data.readUInt16BE(2);
 					if(size > data.length-4) throw new Error("Size was bigger than available");
+					limit = 4+size;
+					if(data.length > limit){processData(data.slice(limit));}
 					token = data.toString('utf8', 4, size+4);
 					googleIdTokenVerifier.verify(token, GOOGLE_LOGIN_KEY, function (error, tokenInfo) {
 						try{
@@ -105,11 +137,11 @@ if (cluster.isMaster) {
 										if(error != null)throw new Error("Couldn't put into db: "+error);
 										if(debug)console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
 										answer = Buffer.allocUnsafe(32+24+2);
-										answer[0] = 2;
+										answer[0] = 3;
 										answer[1] = data[1];
 										answer.write(inserted.ops[0]._id.toString(),2,inserted.ops[0]._id.toString().length);
 										answer.write(inserted.ops[0].key,26,inserted.ops[0].key.length);
-										socket.write(answer);
+										send(answer);
 										sessionSub = inserted.ops[0].sub;
 										sendInfo(0);
 									});
@@ -137,40 +169,73 @@ if (cluster.isMaster) {
 					});
 					if(debug)console.log("Login token: "+token);
 					break;
-				case 3:
-					if(data.length!=32+24+2) throw new Error("Size not match");
+				case 4:
+					//if(data.length!=32+24+2) throw new Error("Size not match");
+					limit = 32+24+2;
+					if(data.length > limit){processData(data.slice(limit));}
 					id = data.toString('utf8',2,26);
 					key = data.toString('utf8',26,58);
 					db_sessions.find({_id:mongo.ObjectId(id),key:key}).toArray(function(error,result){
 						if(error != null)throw new Error("Couldn't get from db: "+error);
 						if(result.length < 1){
-							answer = Buffer.from([3,data[1],0]);
+							answer = Buffer.from([4,data[1],0]);
 						}else{
 							sessionSub = result[0].sub;
 							if(debug)console.log("Session sub: "+sessionSub);
-							answer = Buffer.from([3,data[1],1]);
-					sendInfo(data[1]);
+							answer = Buffer.from([4,data[1],1]);
+							sendInfo(data[1]);
 						}
 					});
 					break;
-					case 4:
+				case 5:
+					limit = 2;
+					if(data.length > limit){processData(data.slice(limit));}
 					sendInfo(data[1]);
 					break;
+				case 6:
+					//if(data.length!=24+2) throw new Error("Size not match ("+data.length+")");
+					limit = 24+2;
+					if(data.length > limit){processData(data.slice(limit));}
+					id = data.toString('utf8',2,26);
+					db_users.find({_id:mongo.ObjectId(id)}).toArray(function(error,result){
+						if(error != null)throw new Error("Couldn't get from db: "+error);
+						img = result[0].img;
+						if(img != null){
+							answer = Buffer.allocUnsafe(24+6+img.length());
+							answer.write(id,2,24);
+							answer.writeUInt32BE(img.length(),26);
+							img.read(0,img.length()).copy(answer,30);
+						}else{
+							answer = Buffer.allocUnsafe(24+6);
+							answer.write(id,2,24);
+							answer.writeUInt32BE(0,26);
+						}
+							answer[0] = 6;
+							answer[1] = data[1];
+							send(answer);
+						//console.log("Sent: "+JSON.stringify(answer));
+					});
+					break;
 				}
-				if(typeof answer === 'Buffer')socket.write(answer);
 				
-				if(debug){
-					console.log("Received "+data.length+" bytes");
-					/*message = "Data: ";
+				if(answer != null){send(answer);}
+				
+			}catch(error){
+				handleError(error);
+			}
+		}
+		
+		socket.on('data', function(data) {
+			if(debug){
+				console.log("Received "+data.length+" bytes"+(completeDebug?": "+JSON.stringify(data):""));
+				/*message = "Data: ";
 					for(a=0;a < data.length;a++){
 						message += data.readUInt8(a)+", ";
 					}
 					console.log(message);
 					console.log(answer);*/
-				}
-			}catch(error){
-				handleError(error);
 			}
+			processData(data);
 		});
 		
 		socket.on('close', function(data) {
@@ -196,5 +261,6 @@ if (cluster.isMaster) {
 			socket.endError();
 		}
 		
-	});
+	}).on('listening',function(){process.send("ready");/*Tell main thread we are ready/*console.log("Ready - "+cluster.worker.id);*/});
+	
 }
