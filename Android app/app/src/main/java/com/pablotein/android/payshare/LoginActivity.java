@@ -8,14 +8,10 @@ import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.support.annotation.NonNull;
-import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.View;
-import android.widget.TextView;
 
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -46,10 +42,13 @@ public class LoginActivity extends AppCompatActivity {
         }
     };
 
+    private View signInButton;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
+        signInButton = findViewById(R.id.sign_in_button);
 
         //Connect to connectionService
         Intent intent = new Intent(this, ConnectionService.class);
@@ -64,14 +63,14 @@ public class LoginActivity extends AppCompatActivity {
                 .enableAutoManage(LoginActivity.this, new GoogleApiClient.OnConnectionFailedListener() {
                     @Override
                     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
-                        Log.e(TAG,"Google API connection error");
+                        Log.e(TAG, "Google API connection error");
                     }
                 })
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build();
 
         //Experimental login system
-        findViewById(R.id.sign_in_button).setOnClickListener(new View.OnClickListener() {
+        signInButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 progressDialog = new ProgressDialog(LoginActivity.this);
@@ -82,12 +81,26 @@ public class LoginActivity extends AppCompatActivity {
                 startActivityForResult(signInIntent, REQUEST_LOGIN_GOOGLE);
             }
         });
+        signInButton.post(new Runnable() {
+            @Override
+            public void run() {
+                checkTabletLayout();
+            }
+        });
+    }
+
+    private void checkTabletLayout() {
+        float maxWidth = getResources().getDimension(R.dimen.max_sign_in_button_width);
+        if (signInButton.getWidth() > maxWidth) {
+            signInButton.getLayoutParams().width = (int) maxWidth;
+            signInButton.requestLayout();
+        }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if(requestCode == REQUEST_LOGIN_GOOGLE){
+        if (requestCode == REQUEST_LOGIN_GOOGLE) {
             GoogleSignInResult result = Auth.GoogleSignInApi.getSignInResultFromIntent(data);
             if (result.isSuccess()) {
                 GoogleSignInAccount acct = result.getSignInAccount();
@@ -105,7 +118,7 @@ public class LoginActivity extends AppCompatActivity {
             } else {
                 progressDialog.dismiss();
                 Log.v(TAG, "Login ERROR");
-                Snackbar.make(findViewById(R.id.parentView),getString(com.pablotein.android.payshare.R.string.error_login_google),Snackbar.LENGTH_SHORT).show();
+                Snackbar.make(findViewById(R.id.parentView), getString(com.pablotein.android.payshare.R.string.error_login_google), Snackbar.LENGTH_SHORT).show();
             }
         }
     }
