@@ -11,6 +11,8 @@ import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.telecom.Connection;
 import android.util.Log;
 import android.view.View;
@@ -23,6 +25,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.auth.api.signin.GoogleSignInResult;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+
+import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -48,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
     ConnectionService.OnImageDownloadedListener imageDownloadedListener = new ConnectionService.OnImageDownloadedListener() {
         @Override
         public void onImageDownloaded(String id, Bitmap image) {
-            ((ImageView)findViewById(R.id.profileImage)).setImageBitmap(image);
+            ((ImageView) findViewById(R.id.profileImage)).setImageBitmap(image);
             updateNameEmail(PreferenceManager.getDefaultSharedPreferences(MainActivity.this));//TODO solve, Quick fix for solving preference change listener not being called
         }
     };
@@ -58,7 +62,17 @@ public class MainActivity extends AppCompatActivity {
             connectionServiceBinder = (ConnectionService.ConnectionServiceBinder) service;
             connectionServiceBinder.addOnConnectionChangeListener(connectionChangeListener);
             connectionServiceBinder.addOnImageDownloadedListener(imageDownloadedListener);
+            connectionServiceBinder.setOnListsReceivedListener(new ConnectionService.OnListsReceivedListener() {
+                @Override
+                public void onListsReceived(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
+                    for (int vez = 0; vez < lists.size(); vez++) {
+                        ((ListRecyclerViewAdapter) listRecyclerView.getAdapter()).addElement(lists.get(vez));
+                    }
+                }
+            });
             connectionServiceBinder.sendRequest(ConnectionService.REQUEST_INFO, null);//Request server version (as test)
+            if (PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("user_id", null) != null)
+                connectionServiceBinder.sendRequest(ConnectionService.REQUEST_GET_LISTS, null);//Request list of lists if user is logged
             /*Bundle extras = new Bundle();
             extras.putString(ConnectionService.EXTRA_USER_ID,PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("user_id",null));
             if(extras.getString(ConnectionService.EXTRA_USER_ID) != null)connectionServiceBinder.sendRequest(ConnectionService.REQUEST_IMAGE,extras);*/
@@ -70,11 +84,13 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    private void updateNameEmail(SharedPreferences sharedPreferences){
-        String text = "Name: "+sharedPreferences.getString("user_name",null)+", email: "+sharedPreferences.getString("user_email",null);
-        ((TextView)findViewById(R.id.infoText)).setText(text);
-        Log.v(TAG,"UPDATE: "+text);
+    private void updateNameEmail(SharedPreferences sharedPreferences) {
+        String text = "Name: " + sharedPreferences.getString("user_name", null) + ", email: " + sharedPreferences.getString("user_email", null);
+        ((TextView) findViewById(R.id.infoText)).setText(text);
+        Log.v(TAG, "UPDATE: " + text);
     }
+
+    RecyclerView listRecyclerView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,13 +106,16 @@ public class MainActivity extends AppCompatActivity {
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(new SharedPreferences.OnSharedPreferenceChangeListener() {
             @Override
             public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-                    updateNameEmail(sharedPreferences);
+                updateNameEmail(sharedPreferences);
             }
         });
-        if(!PreferenceManager.getDefaultSharedPreferences(this).contains("login_id")/* || true*/){//Force login screen to show even if already logged for debugging purposes
-            Intent startLoginIntent = new Intent(this,LoginActivity.class);
+        if (!PreferenceManager.getDefaultSharedPreferences(this).contains("login_id")/* || true*/) {//Force login screen to show even if already logged for debugging purposes
+            Intent startLoginIntent = new Intent(this, LoginActivity.class);
             startActivity(startLoginIntent);
         }
+        listRecyclerView = (RecyclerView) findViewById(R.id.listRecyclerView);
+        listRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        listRecyclerView.setAdapter(new ListRecyclerViewAdapter());
     }
 
     @Override

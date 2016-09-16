@@ -28,11 +28,12 @@ public class ConnectionService extends Service {
     ArrayList<OnConnectionChangeListener> connectionChangeListeners = new ArrayList<>();
     ArrayList<OnImageDownloadedListener> imageDownloadedListeners = new ArrayList<>();
     OnLoginListener loginListener;
+    OnListsReceivedListener listsReceivedListener;
 
     private static String TAG = "ConnectionService", SERVER_IP = "192.168.1.50";
     private static int SERVER_PORT = 1234, SERVER_TIMEOUT = 2000;
 
-    public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_IMAGE = 5;
+    public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_GET_IMAGE = 6, REQUEST_GET_LISTS = 7;
     public static final String EXTRA_LOGIN_GOOGLE_TOKEN = "ExtraLoginGoogleToken", EXTRA_USER_ID = "ExtraUserID";
 
     public interface OnConnectionChangeListener {
@@ -41,6 +42,10 @@ public class ConnectionService extends Service {
         void onDisconnected();
 
         void onConnecting();
+    }
+
+    public interface OnListsReceivedListener {
+        void onListsReceived(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists);
     }
 
     public interface OnLoginListener {
@@ -74,6 +79,10 @@ public class ConnectionService extends Service {
 
         void setOnLoginListener(OnLoginListener listener) {
             ConnectionService.this.loginListener = listener;
+        }
+
+        void setOnListsReceivedListener(OnListsReceivedListener listener) {
+            ConnectionService.this.listsReceivedListener = listener;
         }
     }
 
@@ -137,16 +146,15 @@ public class ConnectionService extends Service {
                         break;
                         case 3: {
                             inputStream.read();//dismiss request code
-                            char[] buffer = new char[32];
+                            byte[] buffer = new byte[32];
                             for (char vez = 0; vez < 24; vez++) {
-                                buffer[vez] = (char) inputStream.read();
+                                buffer[vez] = (byte) inputStream.read();
                             }
-                            String id = String.copyValueOf(buffer, 0, 24);
+                            String id = new String(buffer, 0, 24, "UTF-8");
                             for (char vez = 0; vez < 32; vez++) {
-                                buffer[vez] = (char) inputStream.read();
+                                buffer[vez] = (byte) inputStream.read();
                             }
-                            String key = String.copyValueOf(buffer);
-
+                            String key = new String(buffer, "UTF-8");
                             PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().putString("login_id", id).putString("login_key", key).apply();
                             if (loginListener != null) loginListener.onLogin();
                             //Log.v(TAG, "Logged in: " + id + " - " + key);
@@ -161,23 +169,23 @@ public class ConnectionService extends Service {
                         break;
                         case 5: {
                             inputStream.read();//dismiss request code
-                            char[] buffer = new char[24];
+                            byte[] buffer = new byte[24];
                             for (char vez = 0; vez < 24; vez++) {
-                                buffer[vez] = (char) inputStream.read();
+                                buffer[vez] = (byte) inputStream.read();
                             }
-                            String id = String.copyValueOf(buffer);
+                            String id = new String(buffer, "UTF-8");
                             char size = (char) inputStream.read();
-                            buffer = new char[size];
+                            buffer = new byte[size];
                             for (char vez = 0; vez < size; vez++) {
-                                buffer[vez] = (char) inputStream.read();
+                                buffer[vez] = (byte) inputStream.read();
                             }
-                            String name = String.copyValueOf(buffer);
+                            String name = new String(buffer, "UTF-8");
                             size = (char) inputStream.read();
-                            buffer = new char[size];
+                            buffer = new byte[size];
                             for (char vez = 0; vez < size; vez++) {
-                                buffer[vez] = (char) inputStream.read();
+                                buffer[vez] = (byte) inputStream.read();
                             }
-                            String email = String.copyValueOf(buffer);
+                            String email = new String(buffer, "UTF-8");
 
                             PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().putString("user_name", name).putString("user_email", email).putString("user_id", id).apply();
                             //Log.v(TAG, "Logged in: " + name + " - " + email + " - " + id);
@@ -185,16 +193,16 @@ public class ConnectionService extends Service {
                             //Temporary request profile image every time info is got
                             Bundle extras = new Bundle();
                             extras.putString(EXTRA_USER_ID, id);
-                            sendRequest(ConnectionService.REQUEST_IMAGE, extras);
+                            sendRequest(ConnectionService.REQUEST_GET_IMAGE, extras);
                         }
                         break;
                         case 6: {
                             inputStream.read();
-                            char[] idBuffer = new char[24];
+                            byte[] idBuffer = new byte[24];
                             for (char vez = 0; vez < 24; vez++) {
-                                idBuffer[vez] = (char) inputStream.read();
+                                idBuffer[vez] = (byte) inputStream.read();
                             }
-                            final String id = String.copyValueOf(idBuffer);
+                            final String id = new String(idBuffer, "UTF-8");
                             int size = inputStream.read() << 24 | inputStream.read() << 16 | inputStream.read() << 8 | inputStream.read();
                             //Log.v(TAG,"Image size: "+String.valueOf(size));
                             byte[] buffer = new byte[size];
@@ -214,6 +222,27 @@ public class ConnectionService extends Service {
                                 }
                             });
                             //Log.v(TAG,"Received image");
+                        }
+                        break;
+                        case 7: {
+                            inputStream.read();
+                            final ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> list = new ArrayList<>();
+                            int itemsCount = inputStream.read();
+                            for (int vez = 0; vez < itemsCount; vez++) {
+                                int nameSize = inputStream.read();
+                                byte[] nameBuffer = new byte[nameSize];
+                                for (int vez1 = 0; vez1 < nameSize; vez1++) {
+                                    nameBuffer[vez1] = (byte) inputStream.read();
+                                }
+                                list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8")));
+                            }
+                            Log.v(TAG, "Processed list, items: " + String.valueOf(itemsCount));
+                            mainThreadHandler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    listsReceivedListener.onListsReceived(list);
+                                }
+                            });
                         }
                         break;
                     }
@@ -302,7 +331,7 @@ public class ConnectionService extends Service {
                                     data = buffer.array();
                                 }
                                 break;
-                                case REQUEST_IMAGE: {
+                                case REQUEST_GET_IMAGE: {
                                     final String id = requestBundleList.get(0).getString(EXTRA_USER_ID);
                                     File cachedFile = new File(getCacheDir().getPath() + "/images/profile/" + id);
                                     if (cachedFile.exists()) {//Send cached image or request download if not available
@@ -325,9 +354,14 @@ public class ConnectionService extends Service {
                                     }
                                 }
                                 break;
-                                default:
+                                case REQUEST_GET_LISTS: {
+                                    data = new byte[]{7, 0};
+                                }
+                                break;
+                                default: {
                                     data = new byte[0];
-                                    break;
+                                }
+                                break;
                             }
                             if (data != null) socket.getOutputStream().write(data);
                             requestList.remove(0);

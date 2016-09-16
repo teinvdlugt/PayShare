@@ -75,14 +75,16 @@ if (cluster.isMaster) {
 				if(error != null)throw new Error("Couldn't get from db: "+error);
 				//console.log("Sending info");
 				result = result[0];
-				answer = Buffer.alloc(4+24+result.name.length+result.email.length);
+				nameLength = Buffer.byteLength(result.name);
+				emailLength = Buffer.byteLength(result.email);
+				answer = Buffer.alloc(4+24+nameLength+emailLength);
 				answer[0] = 5;
 				answer[1] = id;
 				answer.write(result._id.toString(),2,24);
-				answer[26] = result.name.length;
+				answer[26] = nameLength;
 				offset = answer[26]+27;
 				answer.write(result.name,27,offset);
-				answer[offset] = result.email.length;
+				answer[offset] = emailLength;
 				answer.write(result.email,offset+1,offset+1+answer[offset]);
 				send(answer);
 				//console.log("Info: "+JSON.stringify(answer));
@@ -90,13 +92,13 @@ if (cluster.isMaster) {
 		}
 		
 		function send(answer){
-				if(debug)console.log("Sent "+answer.length+" bytes"+(completeDebug?": "+JSON.stringify(answer):""));
-				socket.write(answer);
+			if(debug)console.log("Sent "+answer.length+" bytes"+(completeDebug?": "+JSON.stringify(answer):""));
+			socket.write(answer);
 		}
 		
 		function processData(data){
 			try{
-			if(debug)
+				if(debug)
 				console.log("Proccess "+data.length+" bytes"+(completeDebug?": "+JSON.stringify(data):""));
 				//if(data.length<2){socket.endError();return;};
 				command = data.readUInt8(0);
@@ -118,7 +120,7 @@ if (cluster.isMaster) {
 					answer[1] = data[1];
 					data.copy(answer,2,4,size+4);
 					break;
-					case 2:
+				case 2:
 					socket.end();
 					socket.destroy();
 					break;
@@ -132,19 +134,21 @@ if (cluster.isMaster) {
 						try{
 							if (!error) {
 								if(debug)console.log("User info: "+JSON.stringify(tokenInfo));
-								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email}},{upsert:true},function(error,results){
+								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email,lists:[{name:"Element 1"},{name:"Element 2, charset test: ñ, á, 😀"}]}},{upsert:true},function(error,results){
 									if(error != null)throw new Error("Couldn't put into db: "+error);
 									db_sessions.insert({sub:tokenInfo.sub,key:crypto.randomBytes(16).toString('hex')},function(error,inserted){
-										if(error != null)throw new Error("Couldn't put into db: "+error);
-										if(debug)console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
-										answer = Buffer.allocUnsafe(32+24+2);
-										answer[0] = 3;
-										answer[1] = data[1];
-										answer.write(inserted.ops[0]._id.toString(),2,inserted.ops[0]._id.toString().length);
-										answer.write(inserted.ops[0].key,26,inserted.ops[0].key.length);
-										send(answer);
-										sessionSub = inserted.ops[0].sub;
-										sendInfo(0);
+										try{
+											if(error != null)throw new Error("Couldn't put into db: "+error);
+											if(debug)console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
+											answer = Buffer.allocUnsafe(32+24+2);
+											answer[0] = 3;
+											answer[1] = data[1];
+											answer.write(inserted.ops[0]._id.toString(),2,inserted.ops[0]._id.toString().length);
+											answer.write(inserted.ops[0].key,26,inserted.ops[0].key.length);
+											send(answer);
+											sessionSub = inserted.ops[0].sub;
+											sendInfo(0);
+										}catch(error){handleError(error);}
 									});
 									//if(debug)console.log(results);
 								});
@@ -177,15 +181,17 @@ if (cluster.isMaster) {
 					id = data.toString('utf8',2,26);
 					key = data.toString('utf8',26,58);
 					db_sessions.find({_id:mongo.ObjectId(id),key:key}).toArray(function(error,result){
-						if(error != null)throw new Error("Couldn't get from db: "+error);
-						if(result.length < 1){
-							answer = Buffer.from([4,data[1],0]);
-						}else{
-							sessionSub = result[0].sub;
-							if(debug)console.log("Session sub: "+sessionSub);
-							answer = Buffer.from([4,data[1],1]);
-							sendInfo(data[1]);
-						}
+						try{
+							if(error != null)throw new Error("Couldn't get from db: "+error);
+							if(result.length < 1){
+								answer = Buffer.from([4,data[1],0]);
+							}else{
+								sessionSub = result[0].sub;
+								if(debug)console.log("Session sub: "+sessionSub);
+								answer = Buffer.from([4,data[1],1]);
+								sendInfo(data[1]);
+							}
+						}catch(error){handleError(error);}
 					});
 					break;
 				case 5:
@@ -195,26 +201,56 @@ if (cluster.isMaster) {
 					break;
 				case 6:
 					//if(data.length!=24+2) throw new Error("Size not match ("+data.length+")");
+					console.log("Got image request");
 					limit = 24+2;
 					if(data.length > limit){processData(data.slice(limit));}
 					id = data.toString('utf8',2,26);
 					db_users.find({_id:mongo.ObjectId(id)}).toArray(function(error,result){
-						if(error != null)throw new Error("Couldn't get from db: "+error);
-						img = result[0].img;
-						if(img != null){
-							answer = Buffer.allocUnsafe(24+6+img.length());
-							answer.write(id,2,24);
-							answer.writeUInt32BE(img.length(),26);
-							img.read(0,img.length()).copy(answer,30);
-						}else{
-							answer = Buffer.allocUnsafe(24+6);
-							answer.write(id,2,24);
-							answer.writeUInt32BE(0,26);
-						}
+						try{
+							if(error != null)throw new Error("Couldn't get from db: "+error);
+							img = result[0].img;
+							if(img != null){
+								answer = Buffer.allocUnsafe(24+6+img.length());
+								answer.write(id,2,24);
+								answer.writeUInt32BE(img.length(),26);
+								img.read(0,img.length()).copy(answer,30);
+							}else{
+								answer = Buffer.allocUnsafe(24+6);
+								answer.write(id,2,24);
+								answer.writeUInt32BE(0,26);
+							}
 							answer[0] = 6;
 							answer[1] = data[1];
 							send(answer);
-						//console.log("Sent: "+JSON.stringify(answer));
+							//console.log("Sent: "+JSON.stringify(answer));
+						}catch(error){handleError(error);}
+					});
+					break;
+				case 7:
+					if(sessionSub == null)throw new Error("User not logged trying to get info");
+					db_users.find({sub:sessionSub}).toArray(function(error,result){
+						try{
+							if(error != null)throw new Error("Couldn't get from db: "+error);
+							result = result[0];
+							size = 3;
+							for(vez=0;vez<result.lists.length;vez++){
+								size++;
+								size+= Buffer.byteLength(result.lists[vez].name);
+							}
+							
+							answer = Buffer.alloc(size);
+							answer[0] = 7;
+							answer[1] = data[1];
+							answer[2] = result.lists.length;
+							offset = 3;
+							for(vez=0;vez<result.lists.length;vez++){
+								nameSize = Buffer.byteLength(result.lists[vez].name);
+								answer[offset] = nameSize;
+								answer.write(result.lists[vez].name,offset+1,nameSize);
+								offset += nameSize+1;
+							}
+							send(answer);
+						}catch(error){handleError(error);}
 					});
 					break;
 				}
