@@ -13,17 +13,14 @@ import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.util.Log;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.List;
 
 public class ConnectionService extends Service {
     IBinder binder = new ConnectionServiceBinder();
@@ -32,7 +29,7 @@ public class ConnectionService extends Service {
     ArrayList<OnImageDownloadedListener> imageDownloadedListeners = new ArrayList<>();
     OnLoginListener loginListener;
 
-    private static String TAG = "ConnectionService", SERVER_IP = "192.168.1.36";
+    private static String TAG = "ConnectionService", SERVER_IP = "192.168.1.50";
     private static int SERVER_PORT = 1234, SERVER_TIMEOUT = 2000;
 
     public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_IMAGE = 5;
@@ -205,6 +202,9 @@ public class ConnectionService extends Service {
                                 buffer[vez] = (byte) inputStream.read();
                             }
                             final Bitmap result = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                            File file = new File(getCacheDir().getPath() + "/images/profile/" + id);
+                            file.getParentFile().mkdirs();
+                            result.compress(Bitmap.CompressFormat.WEBP, 80, new FileOutputStream(file));
                             mainThreadHandler.post(new Runnable() {
                                 @Override
                                 public void run() {
@@ -285,13 +285,14 @@ public class ConnectionService extends Service {
                                 socket.getOutputStream().write(buffer.array());
                             }
                         }
-                        byte[] data;
+                        byte[] data = null;
                         while (requestList.size() > 0) {
                             switch (requestList.get(0)) {
-                                case REQUEST_INFO:
+                                case REQUEST_INFO: {
                                     data = new byte[]{0, 0};
-                                    break;
-                                case REQUEST_LOGIN_GOOGLE:
+                                }
+                                break;
+                                case REQUEST_LOGIN_GOOGLE: {
                                     //data = new byte[];
                                     String token = requestBundleList.get(0).getString(EXTRA_LOGIN_GOOGLE_TOKEN);
                                     ByteBuffer buffer = ByteBuffer.allocate(4 + token.length());
@@ -299,20 +300,36 @@ public class ConnectionService extends Service {
                                     buffer.putShort((short) token.length());
                                     buffer.put(token.getBytes());
                                     data = buffer.array();
-                                    break;
-                                case REQUEST_IMAGE:
-                                    String id = requestBundleList.get(0).getString(EXTRA_USER_ID);
-                                    buffer = ByteBuffer.allocate(2 + 24);
-                                    buffer.put(new byte[]{6, 0});
-                                    buffer.put(id.getBytes());
-                                    data = buffer.array();
-                                    Log.v(TAG, "Requested image");
-                                    break;
+                                }
+                                break;
+                                case REQUEST_IMAGE: {
+                                    final String id = requestBundleList.get(0).getString(EXTRA_USER_ID);
+                                    File cachedFile = new File(getCacheDir().getPath() + "/images/profile/" + id);
+                                    if (cachedFile.exists()) {//Send cached image or request download if not available
+                                        final Bitmap result = BitmapFactory.decodeFile(cachedFile.getPath());
+                                        mainThreadHandler.post(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                for (OnImageDownloadedListener listener : imageDownloadedListeners) {
+                                                    listener.onImageDownloaded(id, result);
+                                                }
+                                            }
+                                        });
+                                        Log.v(TAG, "Loaded cached image");
+                                    } else {
+                                        ByteBuffer buffer = ByteBuffer.allocate(2 + 24);
+                                        buffer.put(new byte[]{6, 0});
+                                        buffer.put(id.getBytes());
+                                        data = buffer.array();
+                                        Log.v(TAG, "Requested image");
+                                    }
+                                }
+                                break;
                                 default:
                                     data = new byte[0];
                                     break;
                             }
-                            socket.getOutputStream().write(data);
+                            if (data != null) socket.getOutputStream().write(data);
                             requestList.remove(0);
                             requestBundleList.remove(0);
                         }

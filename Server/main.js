@@ -3,7 +3,8 @@ Server code for PayShare
 */
 
 const cluster = require('cluster');
-const numCPUs = require('os').cpus().length;
+const os = require('os');
+const numCPUs = os.cpus().length;
 const net = require('net');
 const mongo = require('mongodb');
 const mongoClient = mongo.MongoClient;
@@ -13,7 +14,7 @@ const stream = require('stream').Transform;
 const crypto = require('crypto');
 
 const PORT = 1234;//Using 1234 temporary
-const HOST = "192.168.1.36";//Local IP of my computer on my home network
+const HOST = os.networkInterfaces()["Wi-Fi"][1].address;//Local IP of my computer on my home network, may change depending on OS and wired/wifi connection
 const VERSION = 1;
 const DATABASE_URL = "mongodb://localhost:27017/payShare";//URL to mongoDB database
 const GOOGLE_LOGIN_KEY = "851535968316-cqvil0i6ej1mcgs3314bqv0k460i6j4f.apps.googleusercontent.com";
@@ -28,7 +29,7 @@ if (cluster.isMaster) {
 	if(permisive)console.log("Warning!! Running in permisive mode, server is vulnerable to attacks");
 	if(singleThreaded)console.log("Running in signle-thread mode, performance may decrease");
 	if(completeDebug)console.log("Running in complete debug mode");
-	console.log("Loading...");
+	console.log("Loading server at IP "+HOST+"...");
 	if(!debug){process.stdout.write("<");animation = setInterval(function(){process.stdout.write("-");},20)};
 	
 	var ready = 0;
