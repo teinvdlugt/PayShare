@@ -22,7 +22,7 @@ const debug = process.argv.indexOf("-d")>-1;
 const permisive = process.argv.indexOf("-p")>-1;
 const singleThreaded = process.argv.indexOf("-s")>-1;
 const completeDebug = process.argv.indexOf("-c")>-1;
-var db, db_users,db_sessions;
+var db, db_users,db_sessions,db_lists;
 
 if (cluster.isMaster) {
 	if(debug)console.log("Running in debug mode");
@@ -57,6 +57,7 @@ if (cluster.isMaster) {
 			this.db = db;
 			db_users = db.collection('users');
 			db_sessions = db.collection('sessions');
+			db_lists = db.collection('lists');
 			server.listen(PORT, HOST);// Make server listen when db is ready
 		}else{
 			console.log("Couldn't connect to database");
@@ -134,7 +135,7 @@ if (cluster.isMaster) {
 						try{
 							if (!error) {
 								if(debug)console.log("User info: "+JSON.stringify(tokenInfo));
-								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email,lists:[{name:"Element 1"},{name:"Element 2, charset test: ñ, á, 😀"}]}},{upsert:true},function(error,results){
+								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email/*,lists:[{name:"Element 1"},{name:"Element 2, charset test: ñ, á, 😀"}]*/}},{upsert:true},function(error,results){
 									if(error != null)throw new Error("Couldn't put into db: "+error);
 									db_sessions.insert({sub:tokenInfo.sub,key:crypto.randomBytes(16).toString('hex')},function(error,inserted){
 										try{
@@ -231,25 +232,36 @@ if (cluster.isMaster) {
 					db_users.find({sub:sessionSub}).toArray(function(error,result){
 						try{
 							if(error != null)throw new Error("Couldn't get from db: "+error);
-							result = result[0];
-							size = 3;
-							for(vez=0;vez<result.lists.length;vez++){
-								size++;
-								size+= Buffer.byteLength(result.lists[vez].name);
+							ids = [];
+							for(vez=0;vez<result[0].lists.length;vez++){
+								ids[vez] = result[0].lists[vez].id;
 							}
+							//ids = [];
+							db_lists.find({_id:{$in:ids}}).toArray(function(error,result){
+								try{
+									if(error != null)throw new Error("Couldn't get from db: "+error);
+									//result = result[0];
+									size = 3;
+									for(vez=0;vez<result.length;vez++){
+										size++;
+										size+= Buffer.byteLength(result[vez].name);
+									}
+									
+									answer = Buffer.alloc(size);
+									answer[0] = 7;
+									answer[1] = data[1];
+									answer[2] = result.length;
+									offset = 3;
+									for(vez=0;vez<result.length;vez++){
+										nameSize = Buffer.byteLength(result[vez].name);
+										answer[offset] = nameSize;
+										answer.write(result[vez].name,offset+1,nameSize);
+										offset += nameSize+1;
+									}
+									send(answer);
+								}catch(error){handleError(error);}
+							});
 							
-							answer = Buffer.alloc(size);
-							answer[0] = 7;
-							answer[1] = data[1];
-							answer[2] = result.lists.length;
-							offset = 3;
-							for(vez=0;vez<result.lists.length;vez++){
-								nameSize = Buffer.byteLength(result.lists[vez].name);
-								answer[offset] = nameSize;
-								answer.write(result.lists[vez].name,offset+1,nameSize);
-								offset += nameSize+1;
-							}
-							send(answer);
 						}catch(error){handleError(error);}
 					});
 					break;
