@@ -1,30 +1,30 @@
 package com.pablotein.android.payshare;
 
+import android.app.Dialog;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
-import android.support.annotation.NonNull;
+import android.support.design.widget.FloatingActionButton;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
-import android.telecom.Connection;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
-
-import com.google.android.gms.auth.api.Auth;
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
-import com.google.android.gms.auth.api.signin.GoogleSignInResult;
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.api.GoogleApiClient;
 
 import java.util.ArrayList;
 
@@ -65,9 +65,7 @@ public class MainActivity extends AppCompatActivity {
             connectionServiceBinder.setOnListsReceivedListener(new ConnectionService.OnListsReceivedListener() {
                 @Override
                 public void onListsReceived(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
-                    for (int vez = 0; vez < lists.size(); vez++) {
-                        ((ListRecyclerViewAdapter) listRecyclerView.getAdapter()).addElement(lists.get(vez));
-                    }
+                    ((ListRecyclerViewAdapter) listRecyclerView.getAdapter()).setLists(lists);
                 }
             });
             connectionServiceBinder.sendRequest(ConnectionService.REQUEST_INFO, null);//Request server version (as test)
@@ -91,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     RecyclerView listRecyclerView;
+    FloatingActionButton addListFAB;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,6 +115,51 @@ public class MainActivity extends AppCompatActivity {
         listRecyclerView = (RecyclerView) findViewById(R.id.listRecyclerView);
         listRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         listRecyclerView.setAdapter(new ListRecyclerViewAdapter());
+        addListFAB = (FloatingActionButton) findViewById(R.id.addListFAB);
+        addListFAB.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                //View view = LayoutInflater.from(MainActivity.this).inflate(R.layout.new_list_dialog,)
+                final AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                        .setView(R.layout.new_list_dialog)
+                        .setTitle(R.string.new_list)
+                        .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                Bundle extras = new Bundle();
+                                extras.putString(ConnectionService.EXTRA_NAME, ((EditText) ((Dialog) dialog).findViewById(R.id.new_list_name)).getText().toString());
+                                connectionServiceBinder.sendRequest(ConnectionService.REQUEST_NEW_LIST, extras);
+                            }
+                        })
+                        .create();
+                dialog.show();
+                final Button positiveButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+                positiveButton.setClickable(false);
+                positiveButton.setEnabled(false);
+                ((EditText) dialog.findViewById(R.id.new_list_name)).addTextChangedListener(new TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+                    }
+
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                        if (s.length() > 0 && s.length() < 100) {
+                            positiveButton.setClickable(true);
+                            positiveButton.setEnabled(true);
+                        } else {
+                            positiveButton.setClickable(false);
+                            positiveButton.setEnabled(false);
+                        }
+                    }
+
+                    @Override
+                    public void afterTextChanged(Editable s) {
+
+                    }
+                });
+            }
+        });
     }
 
     @Override

@@ -33,8 +33,8 @@ public class ConnectionService extends Service {
     private static String TAG = "ConnectionService", SERVER_IP = "192.168.1.50";
     private static int SERVER_PORT = 1234, SERVER_TIMEOUT = 2000;
 
-    public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_GET_IMAGE = 6, REQUEST_GET_LISTS = 7;
-    public static final String EXTRA_LOGIN_GOOGLE_TOKEN = "ExtraLoginGoogleToken", EXTRA_USER_ID = "ExtraUserID";
+    public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_GET_IMAGE = 6, REQUEST_GET_LISTS = 7, REQUEST_NEW_LIST = 8;
+    public static final String EXTRA_LOGIN_GOOGLE_TOKEN = "ExtraLoginGoogleToken", EXTRA_USER_ID = "ExtraUserID", EXTRA_NAME = "ExtraName";
 
     public interface OnConnectionChangeListener {
         void onConnected();
@@ -229,12 +229,16 @@ public class ConnectionService extends Service {
                             final ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> list = new ArrayList<>();
                             int itemsCount = inputStream.read();
                             for (int vez = 0; vez < itemsCount; vez++) {
+                                byte[] idBuffer = new byte[24];
+                                for (int vez1 = 0; vez1 < 24; vez1++) {
+                                    idBuffer[vez1] = (byte) inputStream.read();
+                                }
                                 int nameSize = inputStream.read();
                                 byte[] nameBuffer = new byte[nameSize];
                                 for (int vez1 = 0; vez1 < nameSize; vez1++) {
                                     nameBuffer[vez1] = (byte) inputStream.read();
                                 }
-                                list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8")));
+                                list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"),new String(idBuffer)));
                             }
                             Log.v(TAG, "Processed list, items: " + String.valueOf(itemsCount));
                             mainThreadHandler.post(new Runnable() {
@@ -356,6 +360,15 @@ public class ConnectionService extends Service {
                                 break;
                                 case REQUEST_GET_LISTS: {
                                     data = new byte[]{7, 0};
+                                }
+                                break;
+                                case REQUEST_NEW_LIST:{
+                                    byte[] name = requestBundleList.get(0).getString(EXTRA_NAME).getBytes("UTF-8");
+                                    ByteBuffer buffer = ByteBuffer.allocate(4 + name.length);
+                                    buffer.put(new byte[]{8, 0});
+                                    buffer.putShort((short) name.length);
+                                    buffer.put(name);
+                                    data = buffer.array();
                                 }
                                 break;
                                 default: {

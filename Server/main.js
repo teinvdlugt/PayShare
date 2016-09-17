@@ -22,7 +22,13 @@ const debug = process.argv.indexOf("-d")>-1;
 const permisive = process.argv.indexOf("-p")>-1;
 const singleThreaded = process.argv.indexOf("-s")>-1;
 const completeDebug = process.argv.indexOf("-c")>-1;
+const help = process.argv.indexOf("-h")>-1;
 var db, db_users,db_sessions,db_lists;
+
+if(help){
+	console.log("PayShare server help message:\n -d Show debug messages\n -p Run in permissive mode\n -s Run in single-threaded mode\n -c Run in complete debug mode\n -h Show this message");
+	process.exit();
+}
 
 if (cluster.isMaster) {
 	if(debug)console.log("Running in debug mode");
@@ -73,21 +79,23 @@ if (cluster.isMaster) {
 		
 		function sendInfo(id){
 			db_users.find({sub:sessionSub}).toArray(function(error,result){
-				if(error != null)throw new Error("Couldn't get from db: "+error);
-				//console.log("Sending info");
-				result = result[0];
-				nameLength = Buffer.byteLength(result.name);
-				emailLength = Buffer.byteLength(result.email);
-				answer = Buffer.alloc(4+24+nameLength+emailLength);
-				answer[0] = 5;
-				answer[1] = id;
-				answer.write(result._id.toString(),2,24);
-				answer[26] = nameLength;
-				offset = answer[26]+27;
-				answer.write(result.name,27,offset);
-				answer[offset] = emailLength;
-				answer.write(result.email,offset+1,offset+1+answer[offset]);
-				send(answer);
+				try{
+					if(error != null)throw new Error("Couldn't get from db: "+error);
+					if(result.length<1)throw new Erro("No users found");
+					result = result[0];
+					nameLength = Buffer.byteLength(result.name);
+					emailLength = Buffer.byteLength(result.email);
+					answer = Buffer.alloc(4+24+nameLength+emailLength);
+					answer[0] = 5;
+					answer[1] = id;
+					answer.write(result._id.toString(),2,24);
+					answer[26] = nameLength;
+					offset = answer[26]+27;
+					answer.write(result.name,27,offset);
+					answer[offset] = emailLength;
+					answer.write(result.email,offset+1,offset+1+answer[offset]);
+					send(answer);
+				}catch(error){handleError(error);}
 				//console.log("Info: "+JSON.stringify(answer));
 			});
 		}
@@ -107,7 +115,7 @@ if (cluster.isMaster) {
 				switch(command){
 				case 0://Info request
 					limit = 2;
-					if(data.length > limit){processData(data.slice(limit));}
+					//if(data.length > limit){processData(data.slice(limit));}
 					answer = Buffer.from([0,data.readUInt8(1),VERSION]);//Answer requested command, request ID and VERSION
 					break;
 				case 1://Echo (test) request
@@ -115,7 +123,7 @@ if (cluster.isMaster) {
 					size = data.readUInt16BE(2);
 					if(size > data.length-4) throw new Error("Size was bigger than available");
 					limit = 4+size;
-					if(data.length > limit){processData(data.slice(limit));}
+					//if(data.length > limit){processData(data.slice(limit));}
 					answer = Buffer.allocUnsafe(size+2);
 					answer[0] = 1;
 					answer[1] = data[1];
@@ -129,7 +137,7 @@ if (cluster.isMaster) {
 					size = data.readUInt16BE(2);
 					if(size > data.length-4) throw new Error("Size was bigger than available");
 					limit = 4+size;
-					if(data.length > limit){processData(data.slice(limit));}
+					//if(data.length > limit){processData(data.slice(limit));}
 					token = data.toString('utf8', 4, size+4);
 					googleIdTokenVerifier.verify(token, GOOGLE_LOGIN_KEY, function (error, tokenInfo) {
 						try{
@@ -178,7 +186,7 @@ if (cluster.isMaster) {
 				case 4:
 					//if(data.length!=32+24+2) throw new Error("Size not match");
 					limit = 32+24+2;
-					if(data.length > limit){processData(data.slice(limit));}
+					//if(data.length > limit){processData(data.slice(limit));}
 					id = data.toString('utf8',2,26);
 					key = data.toString('utf8',26,58);
 					db_sessions.find({_id:mongo.ObjectId(id),key:key}).toArray(function(error,result){
@@ -197,14 +205,14 @@ if (cluster.isMaster) {
 					break;
 				case 5:
 					limit = 2;
-					if(data.length > limit){processData(data.slice(limit));}
+					//if(data.length > limit){processData(data.slice(limit));}
 					sendInfo(data[1]);
 					break;
 				case 6:
 					//if(data.length!=24+2) throw new Error("Size not match ("+data.length+")");
 					console.log("Got image request");
 					limit = 24+2;
-					if(data.length > limit){processData(data.slice(limit));}
+					//if(data.length > limit){processData(data.slice(limit));}
 					id = data.toString('utf8',2,26);
 					db_users.find({_id:mongo.ObjectId(id)}).toArray(function(error,result){
 						try{
@@ -228,6 +236,8 @@ if (cluster.isMaster) {
 					});
 					break;
 				case 7:
+					limit = 2;
+					//if(data.length > limit){processData(data.slice(limit));}
 					if(sessionSub == null)throw new Error("User not logged trying to get info");
 					db_users.find({sub:sessionSub}).toArray(function(error,result){
 						try{
@@ -243,7 +253,7 @@ if (cluster.isMaster) {
 									//result = result[0];
 									size = 3;
 									for(vez=0;vez<result.length;vez++){
-										size++;
+										size+= 25;
 										size+= Buffer.byteLength(result[vez].name);
 									}
 									
@@ -254,9 +264,10 @@ if (cluster.isMaster) {
 									offset = 3;
 									for(vez=0;vez<result.length;vez++){
 										nameSize = Buffer.byteLength(result[vez].name);
-										answer[offset] = nameSize;
-										answer.write(result[vez].name,offset+1,nameSize);
-										offset += nameSize+1;
+										answer.write(result[vez]._id.toString(),offset,result[vez]._id.toString().length);
+										answer[offset+24] = nameSize;
+										answer.write(result[vez].name,offset+25,nameSize);
+										offset += nameSize+25;
 									}
 									send(answer);
 								}catch(error){handleError(error);}
@@ -265,9 +276,30 @@ if (cluster.isMaster) {
 						}catch(error){handleError(error);}
 					});
 					break;
+				case 8:
+					size = data.readUInt16BE(2);
+					if(size > data.length-4) throw new Error("Size was bigger than available");
+					limit = 4+size;
+					if(sessionSub == null)throw new Error("User not logged trying to get info");
+					//if(data.length > limit){processData(data.slice(limit));}
+					name = data.toString('utf8', 4, size+4);
+					if(name.length < 100){
+						db_lists.insert({name:name},function(error,result){
+							if(error != null)throw new Error("Couldn't get from db: "+error);
+							//console.log("New item: "+JSON.stringify(data));
+							db_users.updateOne({sub:sessionSub},{$push:{lists:{id:result.ops[0]._id,type:1}}},{upsert:false},function(error,results){
+								console.log("Inserted");
+								processData(Buffer.from([7,data[1]]));
+							});
+						});
+					}else{
+						throw new Error("List name was bigger than expected");
+					}
+					break;
 				}
 				
 				if(answer != null){send(answer);}
+				if(data.length > limit){processData(data.slice(limit));}//There are more request on the data received so process them
 				
 			}catch(error){
 				handleError(error);

@@ -1,15 +1,10 @@
 package com.pablotein.android.payshare;
 
 import android.support.v7.widget.RecyclerView;
-import android.util.AttributeSet;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.LinearLayout;
 import android.widget.TextView;
-
-import org.w3c.dom.Attr;
 
 import java.util.ArrayList;
 
@@ -21,20 +16,63 @@ public class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerVi
     /*public ListRecyclerViewAdapter(ArrayList<ListRecyclerItem> list) {
         this.list = list;
     }*/
-    public void addElement(ListRecyclerItem item) {
+
+    public void setLists(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
+        for (int vez = 0; vez < lists.size(); vez++) {
+            if (!containsId(lists.get(vez).id)) {
+                list.add(lists.get(vez));
+                notifyItemInserted(list.size() - 1);
+            }
+        }
+        for (int vez = 0; vez < list.size(); vez++) {
+            boolean contains = false;
+            for (int vez1 = 0; vez1 < lists.size(); vez1++) {
+                if (list.get(vez).id.equals(lists.get(vez1).id)) {
+                    contains = true;
+                    break;
+                }
+            }
+            if (!contains) {
+                list.remove(vez);
+                notifyItemRemoved(vez);
+                vez--;
+            }
+        }
+        if (list.size() > 0) {
+            if (noItems) {
+                noItems = false;
+                notifyItemRemoved(0);
+            }
+        } else {
+            if (!noItems) {
+                noItems = true;
+                notifyItemInserted(0);
+            }
+        }
+    }
+
+    /*public void addElement(ListRecyclerItem item) {
         list.add(item);
         notifyItemInserted(list.size() - 1);
         if (noItems) {
             noItems = false;
             notifyItemRemoved(0);
         }
+    }*/
+
+    public boolean containsId(String id) {
+        for (int vez = 0; vez < list.size(); vez++) {
+            if (list.get(vez).id.equals(id)) return true;
+        }
+        return false;
     }
 
     public static class ListRecyclerItem {
-        String name;
+        String name, id;
 
-        public ListRecyclerItem(String name) {
+        public ListRecyclerItem(String name, String id) {
             this.name = name;
+            this.id = id;
         }
     }
 
