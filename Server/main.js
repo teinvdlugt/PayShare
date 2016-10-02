@@ -6,6 +6,7 @@ try{
 	var os = require('os');
 	var numCPUs = os.cpus().length;
 	var net = require('net');
+	var stdin = process.openStdin();
 	var mongo = require('mongodb');
 	var mongoClient = mongo.MongoClient;
 	var googleIdTokenVerifier = require('google-id-token-verifier');
@@ -18,7 +19,7 @@ try{
 }
 
 const PORT = 1234;//Using 1234 temporary
-const HOST = os.networkInterfaces()["Wi-Fi"][1].address;//Local IP of my computer on my home network, may change depending on OS and wired/wifi connection
+//const HOST = os.networkInterfaces()["Wi-Fi"][1].address;//Local IP of my computer on my home network, may change depending on OS and wired/wifi connection
 const VERSION = 1;
 const DATABASE_URL = "mongodb://localhost:27017/payShare";//URL to mongoDB database
 const GOOGLE_LOGIN_KEY = "851535968316-cqvil0i6ej1mcgs3314bqv0k460i6j4f.apps.googleusercontent.com";
@@ -40,35 +41,56 @@ if(help){
 }
 
 if (cluster.isMaster) {
-	if(debug)console.log("Running in debug mode");
-	if(permisive)console.log("Warning!! Running in permisive mode, server is vulnerable to attacks");
-	if(singleThreaded)console.log("Running in signle-thread mode, performance may decrease");
-	if(completeDebug)console.log("Running in complete debug mode");
-	console.log("Loading server at IP "+HOST+"...");
-	if(!debug){process.stdout.write("<");animation = setInterval(function(){process.stdout.write("-");},20)};
-	
-	var ready = 0;
-	for (var i = 0; i < (singleThreaded?1:numCPUs); i++) {// Create as much threads as cores of the cpu to distribute load
-		child = cluster.fork();
-		child.on('message',function(message){
-			if(message == "ready"){
-				ready++;
-				if(ready == numCPUs){
-					if(!debug){clearInterval(animation);console.log(">");}
-					console.log("All ready! =)");
-				}
-			}else if(message == "error_db"){
-				clearInterval(animation);console.log(">");
-				console.log("Couldn't connect to database, check mongodb is running on localhost and default port");
-				exitError();
-			}
-		});
+	console.log("Available network interfaces to run on:");
+	inter = os.networkInterfaces();
+	selectable = [];
+	for(index in inter) {
+		console.log("\t"+index);
+		for(vez=0;vez<inter[index].length;vez++){
+			console.log("\t\t"+selectable.length+". "+inter[index][vez].address);
+			selectable.push(inter[index][vez].address);
+		}
 	}
+	process.stdout.write("Enter number of IP to run server on from the list above:");
 
-	cluster.on('exit', (worker, code, signal) => {
-		console.log(`Thread ${worker.process.pid} died`);
+	stdin.on("data", function(d) {
+		stdin.on("data",function(){console.log("Cannot enter any command");});
+		var HOST = selectable[d.toString().trim()];
+		if(HOST == null){
+			console.log(d.toString().trim()+" is not a valid option");
+			exitError();
+		}
+		if(debug)console.log("Running in debug mode");
+		if(permisive)console.log("Warning!! Running in permisive mode, server is vulnerable to attacks");
+		if(singleThreaded)console.log("Running in signle-thread mode, performance may decrease");
+		if(completeDebug)console.log("Running in complete debug mode");
+		console.log("Loading server at IP "+HOST+"...");
+		if(!debug){process.stdout.write("<");animation = setInterval(function(){process.stdout.write("-");},20)};
+		
+		var ready = 0;
+		for (var i = 0; i < (singleThreaded?1:numCPUs); i++) {// Create as much threads as cores of the cpu to distribute load
+			child = cluster.fork({"HOST":HOST});
+			child.on('message',function(message){
+				if(message == "ready"){
+					ready++;
+					if(ready == numCPUs){
+						if(!debug){clearInterval(animation);console.log(">");}
+						console.log("All ready! =)");
+					}
+				}else if(message == "error_db"){
+					clearInterval(animation);console.log(">");
+					console.log("Couldn't connect to database, check mongodb is running on localhost and default port");
+					exitError();
+				}
+			});
+		}
+
+		cluster.on('exit', (worker, code, signal) => {
+			console.log(`Thread ${worker.process.pid} died`);
+		});
 	});
 } else {
+	var HOST = process.env.HOST;
 	// Connect with database
 	mongoClient.connect(DATABASE_URL, function(error, db) {
 		if(error == null){
@@ -364,5 +386,4 @@ if (cluster.isMaster) {
 		}
 		
 	}).on('listening',function(){process.send("ready");/*Tell main thread we are ready/*console.log("Ready - "+cluster.worker.id);*/});
-	
 }

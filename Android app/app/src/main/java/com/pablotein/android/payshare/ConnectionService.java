@@ -176,9 +176,7 @@ public class ConnectionService extends Service {
                         case 4: {
                             inputStream.read();
                             int data = inputStream.read();
-                            Log.v("Login",String.valueOf(data));
                             if (data != 1) {
-                                //TODO handle error logging in
                                 PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().clear().apply();
                                 Intent startLoginIntent = new Intent(ConnectionService.this, LoginActivity.class);
                                 startActivity(startLoginIntent);
