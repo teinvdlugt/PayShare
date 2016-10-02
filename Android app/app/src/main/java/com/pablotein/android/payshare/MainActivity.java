@@ -11,6 +11,7 @@ import android.graphics.Bitmap;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.design.widget.FloatingActionButton;
+import android.support.design.widget.Snackbar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -40,7 +41,16 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onDisconnected() {
+        public void onDisconnected(final Runnable retryRunnable) {
+            Snackbar snackbar = Snackbar.make(findViewById(R.id.parent), R.string.connection_error, Snackbar.LENGTH_LONG);
+            if (retryRunnable != null)
+                snackbar.setAction(R.string.retry, new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        retryRunnable.run();
+                    }
+                });
+            snackbar.show();
             ((TextView) findViewById(R.id.testText)).setText("Disconnected");
         }
 

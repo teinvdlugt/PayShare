@@ -1,17 +1,21 @@
 /*
 Server code for PayShare
 */
-
-const cluster = require('cluster');
-const os = require('os');
-const numCPUs = os.cpus().length;
-const net = require('net');
-const mongo = require('mongodb');
-const mongoClient = mongo.MongoClient;
-const googleIdTokenVerifier = require('google-id-token-verifier');
-const https = require('https');
-const stream = require('stream').Transform;
-const crypto = require('crypto');
+try{
+	var cluster = require('cluster');
+	var os = require('os');
+	var numCPUs = os.cpus().length;
+	var net = require('net');
+	var mongo = require('mongodb');
+	var mongoClient = mongo.MongoClient;
+	var googleIdTokenVerifier = require('google-id-token-verifier');
+	var https = require('https');
+	var stream = require('stream').Transform;
+	var crypto = require('crypto');
+}catch(error){
+	console.log("Couldn't load modules, type 'npm install' to install all dependencies");
+	exitError();
+}
 
 const PORT = 1234;//Using 1234 temporary
 const HOST = os.networkInterfaces()["Wi-Fi"][1].address;//Local IP of my computer on my home network, may change depending on OS and wired/wifi connection
@@ -24,6 +28,11 @@ const singleThreaded = process.argv.indexOf("-s")>-1;
 const completeDebug = process.argv.indexOf("-c")>-1;
 const help = process.argv.indexOf("-h")>-1;
 var db, db_users,db_sessions,db_lists;
+
+function exitError(){
+	console.log("Server load stopped");
+	process.exit();
+}
 
 if(help){
 	console.log("PayShare server help message:\n -d Show debug messages\n -p Run in permissive mode\n -s Run in single-threaded mode\n -c Run in complete debug mode\n -h Show this message");
@@ -48,6 +57,10 @@ if (cluster.isMaster) {
 					if(!debug){clearInterval(animation);console.log(">");}
 					console.log("All ready! =)");
 				}
+			}else if(message == "error_db"){
+				clearInterval(animation);console.log(">");
+				console.log("Couldn't connect to database, check mongodb is running on localhost and default port");
+				exitError();
 			}
 		});
 	}
@@ -66,7 +79,12 @@ if (cluster.isMaster) {
 			db_lists = db.collection('lists');
 			server.listen(PORT, HOST);// Make server listen when db is ready
 		}else{
-			console.log("Couldn't connect to database");
+			if(debug){
+				console.log("Couldn't connect to database");
+			}
+			else{
+				process.send("error_db");
+			}
 		}
 	});
 
@@ -81,7 +99,7 @@ if (cluster.isMaster) {
 			db_users.find({sub:sessionSub}).toArray(function(error,result){
 				try{
 					if(error != null)throw new Error("Couldn't get from db: "+error);
-					if(result.length<1)throw new Erro("No users found");
+					if(result.length<1)throw new Error("No users found");
 					result = result[0];
 					nameLength = Buffer.byteLength(result.name);
 					emailLength = Buffer.byteLength(result.email);
@@ -143,7 +161,7 @@ if (cluster.isMaster) {
 						try{
 							if (!error) {
 								if(debug)console.log("User info: "+JSON.stringify(tokenInfo));
-								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email/*,lists:[{name:"Element 1"},{name:"Element 2, charset test: ñ, á, 😀"}]*/}},{upsert:true},function(error,results){
+								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email,lists:[]}},{upsert:true},function(error,results){
 									if(error != null)throw new Error("Couldn't put into db: "+error);
 									db_sessions.insert({sub:tokenInfo.sub,key:crypto.randomBytes(16).toString('hex')},function(error,inserted){
 										try{
@@ -194,10 +212,13 @@ if (cluster.isMaster) {
 							if(error != null)throw new Error("Couldn't get from db: "+error);
 							if(result.length < 1){
 								answer = Buffer.from([4,data[1],0]);
+								send(answer);
+								if(debug)console.log("Login error");
 							}else{
 								sessionSub = result[0].sub;
 								if(debug)console.log("Session sub: "+sessionSub);
 								answer = Buffer.from([4,data[1],1]);
+								send(answer);
 								sendInfo(data[1]);
 							}
 						}catch(error){handleError(error);}

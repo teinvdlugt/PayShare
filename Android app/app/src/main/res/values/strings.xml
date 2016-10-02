@@ -8,4 +8,6 @@
     <string name="new_list">New list</string>
     <string name="ok">OK</string>
     <string name="name">Name</string>
+    <string name="retry">Retry</string>
+    <string name="connection_error">Connection error</string>
 </resources>

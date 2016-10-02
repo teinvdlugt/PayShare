@@ -30,7 +30,7 @@ public class ConnectionService extends Service {
     OnLoginListener loginListener;
     OnListsReceivedListener listsReceivedListener;
 
-    private static String TAG = "ConnectionService", SERVER_IP = "192.168.1.50";
+    private static String TAG = "ConnectionService", SERVER_IP = "192.168.1.35";
     private static int SERVER_PORT = 1234, SERVER_TIMEOUT = 2000;
 
     public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_GET_IMAGE = 6, REQUEST_GET_LISTS = 7, REQUEST_NEW_LIST = 8;
@@ -39,7 +39,7 @@ public class ConnectionService extends Service {
     public interface OnConnectionChangeListener {
         void onConnected();
 
-        void onDisconnected();
+        void onDisconnected(Runnable retryRunnable);
 
         void onConnecting();
     }
@@ -144,6 +144,19 @@ public class ConnectionService extends Service {
                             Log.v(TAG, "Got answer to request " + String.valueOf(inputStream.read()) + ": " + String.valueOf(inputStream.read()));
                         }
                         break;
+                        case 2: {
+                            socket.close();
+                            mainThreadHandler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    for (OnConnectionChangeListener listener : connectionChangeListeners) {
+                                        listener.onDisconnected(null);
+                                    }
+                                }
+                            });
+                            Thread.currentThread().interrupt();
+                        }
+                        break;
                         case 3: {
                             inputStream.read();//dismiss request code
                             byte[] buffer = new byte[32];
@@ -162,8 +175,13 @@ public class ConnectionService extends Service {
                         break;
                         case 4: {
                             inputStream.read();
-                            if (inputStream.read() != 1) {
+                            int data = inputStream.read();
+                            Log.v("Login",String.valueOf(data));
+                            if (data != 1) {
                                 //TODO handle error logging in
+                                PreferenceManager.getDefaultSharedPreferences(ConnectionService.this).edit().clear().apply();
+                                Intent startLoginIntent = new Intent(ConnectionService.this, LoginActivity.class);
+                                startActivity(startLoginIntent);
                             }
                         }
                         break;
@@ -209,19 +227,21 @@ public class ConnectionService extends Service {
                             for (char vez = 0; vez < size; vez++) {
                                 buffer[vez] = (byte) inputStream.read();
                             }
-                            final Bitmap result = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
-                            File file = new File(getCacheDir().getPath() + "/images/profile/" + id);
-                            file.getParentFile().mkdirs();
-                            result.compress(Bitmap.CompressFormat.WEBP, 80, new FileOutputStream(file));
-                            mainThreadHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    for (OnImageDownloadedListener listener : imageDownloadedListeners) {
-                                        listener.onImageDownloaded(id, result);
+                            if(buffer.length > 0) {
+                                final Bitmap result = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                                File file = new File(getCacheDir().getPath() + "/images/profile/" + id);
+                                file.getParentFile().mkdirs();
+                                result.compress(Bitmap.CompressFormat.WEBP, 80, new FileOutputStream(file));
+                                mainThreadHandler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        for (OnImageDownloadedListener listener : imageDownloadedListeners) {
+                                            listener.onImageDownloaded(id, result);
+                                        }
                                     }
-                                }
-                            });
-                            //Log.v(TAG,"Received image");
+                                });
+                            }
+                            Log.v(TAG,"Received image");
                         }
                         break;
                         case 7: {
@@ -238,7 +258,7 @@ public class ConnectionService extends Service {
                                 for (int vez1 = 0; vez1 < nameSize; vez1++) {
                                     nameBuffer[vez1] = (byte) inputStream.read();
                                 }
-                                list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"),new String(idBuffer)));
+                                list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer)));
                             }
                             Log.v(TAG, "Processed list, items: " + String.valueOf(itemsCount));
                             mainThreadHandler.post(new Runnable() {
@@ -275,131 +295,151 @@ public class ConnectionService extends Service {
     ArrayList<Integer> requestList = new ArrayList<>();
     ArrayList<Bundle> requestBundleList = new ArrayList<>();
 
+    Thread outputThread = new Thread(new sendRunnable());
+
 
     private void sendRequest(int request, Bundle extras) {
         requestList.add(request);
         requestBundleList.add(extras);
         if (!proccesing) {
             proccesing = true;
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        if (socket == null || socket.isClosed()) {
-                            mainThreadHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    for (OnConnectionChangeListener listener : connectionChangeListeners) {
-                                        listener.onConnecting();
-                                    }
-                                }
-                            });
-                            //Log.v(TAG, "Connecting");
-                            socket = new Socket();
-                            socket.connect(new InetSocketAddress(SERVER_IP, SERVER_PORT), SERVER_TIMEOUT);
-                            //Log.v(TAG, "Connected");
-                            mainThreadHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    for (OnConnectionChangeListener listener : connectionChangeListeners) {
-                                        listener.onConnected();
-                                    }
-                                }
-                            });
-                            inputListenerThread.start();
-                            SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(ConnectionService.this);
-                            if (preferences.contains("login_id")) {//Identify app on server if already logged in
-                                ByteBuffer buffer = ByteBuffer.allocate(32 + 24 + 2);
-                                buffer.put(new byte[]{4, 0});
+            outputThread.start();
+        }
+    }
+
+    private class sendRunnable implements Runnable {
+        @Override
+        public void run() {
+            try {
+                if (socket == null || socket.isClosed()) {
+                    mainThreadHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            for (OnConnectionChangeListener listener : connectionChangeListeners) {
+                                listener.onConnecting();
+                            }
+                        }
+                    });
+                    //Log.v(TAG, "Connecting");
+                    socket = new Socket();
+                    socket.connect(new InetSocketAddress(SERVER_IP, SERVER_PORT), SERVER_TIMEOUT);
+                    //Log.v(TAG, "Connected");
+                    mainThreadHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            for (OnConnectionChangeListener listener : connectionChangeListeners) {
+                                listener.onConnected();
+                            }
+                        }
+                    });
+                    inputListenerThread.start();
+                    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(ConnectionService.this);
+                    if (preferences.contains("login_id")) {//Identify app on server if already logged in
+                        ByteBuffer buffer = ByteBuffer.allocate(32 + 24 + 2);
+                        buffer.put(new byte[]{4, 0});
                                 /*Log.v(TAG, "Login size: " + String.valueOf(preferences.getString("login_id", null).getBytes().length) + " - " + String.valueOf(preferences.getString("login_key", null).getBytes().length));
                                 Log.v(TAG, "Login: " + preferences.getString("login_id", null) + " - " + preferences.getString("login_key", null));*/
-                                buffer.put(preferences.getString("login_id", null).getBytes());
-                                buffer.put(preferences.getString("login_key", null).getBytes());
-                                socket.getOutputStream().write(buffer.array());
-                            }
+                        buffer.put(preferences.getString("login_id", null).getBytes());
+                        buffer.put(preferences.getString("login_key", null).getBytes());
+                        socket.getOutputStream().write(buffer.array());
+                    }
+                }
+                byte[] data = null;
+                while (requestList.size() > 0) {
+                    switch (requestList.get(0)) {
+                        case REQUEST_INFO: {
+                            data = new byte[]{0, 0};
                         }
-                        byte[] data = null;
-                        while (requestList.size() > 0) {
-                            switch (requestList.get(0)) {
-                                case REQUEST_INFO: {
-                                    data = new byte[]{0, 0};
-                                }
-                                break;
-                                case REQUEST_LOGIN_GOOGLE: {
-                                    //data = new byte[];
-                                    String token = requestBundleList.get(0).getString(EXTRA_LOGIN_GOOGLE_TOKEN);
-                                    ByteBuffer buffer = ByteBuffer.allocate(4 + token.length());
-                                    buffer.put(new byte[]{3, 0});
-                                    buffer.putShort((short) token.length());
-                                    buffer.put(token.getBytes());
-                                    data = buffer.array();
-                                }
-                                break;
-                                case REQUEST_GET_IMAGE: {
-                                    final String id = requestBundleList.get(0).getString(EXTRA_USER_ID);
-                                    File cachedFile = new File(getCacheDir().getPath() + "/images/profile/" + id);
-                                    if (cachedFile.exists()) {//Send cached image or request download if not available
-                                        final Bitmap result = BitmapFactory.decodeFile(cachedFile.getPath());
-                                        mainThreadHandler.post(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                for (OnImageDownloadedListener listener : imageDownloadedListeners) {
-                                                    listener.onImageDownloaded(id, result);
-                                                }
-                                            }
-                                        });
-                                        Log.v(TAG, "Loaded cached image");
-                                    } else {
-                                        ByteBuffer buffer = ByteBuffer.allocate(2 + 24);
-                                        buffer.put(new byte[]{6, 0});
-                                        buffer.put(id.getBytes());
-                                        data = buffer.array();
-                                        Log.v(TAG, "Requested image");
+                        break;
+                        case REQUEST_LOGIN_GOOGLE: {
+                            //data = new byte[];
+                            String token = requestBundleList.get(0).getString(EXTRA_LOGIN_GOOGLE_TOKEN);
+                            ByteBuffer buffer = ByteBuffer.allocate(4 + token.length());
+                            buffer.put(new byte[]{3, 0});
+                            buffer.putShort((short) token.length());
+                            buffer.put(token.getBytes());
+                            data = buffer.array();
+                        }
+                        break;
+                        case REQUEST_GET_IMAGE: {
+                            final String id = requestBundleList.get(0).getString(EXTRA_USER_ID);
+                            File cachedFile = new File(getCacheDir().getPath() + "/images/profile/" + id);
+                            if (cachedFile.exists()) {//Send cached image or request download if not available
+                                final Bitmap result = BitmapFactory.decodeFile(cachedFile.getPath());
+                                mainThreadHandler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        for (OnImageDownloadedListener listener : imageDownloadedListeners) {
+                                            listener.onImageDownloaded(id, result);
+                                        }
                                     }
-                                }
-                                break;
-                                case REQUEST_GET_LISTS: {
-                                    data = new byte[]{7, 0};
-                                }
-                                break;
-                                case REQUEST_NEW_LIST:{
-                                    byte[] name = requestBundleList.get(0).getString(EXTRA_NAME).getBytes("UTF-8");
-                                    ByteBuffer buffer = ByteBuffer.allocate(4 + name.length);
-                                    buffer.put(new byte[]{8, 0});
-                                    buffer.putShort((short) name.length);
-                                    buffer.put(name);
-                                    data = buffer.array();
-                                }
-                                break;
-                                default: {
-                                    data = new byte[0];
-                                }
-                                break;
+                                });
+                                Log.v(TAG, "Loaded cached image");
+                            } else {
+                                ByteBuffer buffer = ByteBuffer.allocate(2 + 24);
+                                buffer.put(new byte[]{6, 0});
+                                buffer.put(id.getBytes());
+                                data = buffer.array();
+                                Log.v(TAG, "Requested image");
                             }
-                            if (data != null) socket.getOutputStream().write(data);
-                            requestList.remove(0);
-                            requestBundleList.remove(0);
                         }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        try {
-                            if (socket != null) socket.close();
-                        } catch (IOException e2) {
-                            e2.printStackTrace();
+                        break;
+                        case REQUEST_GET_LISTS: {
+                            data = new byte[]{7, 0};
                         }
-                        inputListenerThread.interrupt();
-                        mainThreadHandler.post(new Runnable() {
+                        break;
+                        case REQUEST_NEW_LIST: {
+                            byte[] name = requestBundleList.get(0).getString(EXTRA_NAME).getBytes("UTF-8");
+                            ByteBuffer buffer = ByteBuffer.allocate(4 + name.length);
+                            buffer.put(new byte[]{8, 0});
+                            buffer.putShort((short) name.length);
+                            buffer.put(name);
+                            data = buffer.array();
+                        }
+                        break;
+                        default: {
+                            data = new byte[0];
+                        }
+                        break;
+                    }
+                    if (data != null) socket.getOutputStream().write(data);
+                    requestList.remove(0);
+                    requestBundleList.remove(0);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                try {
+                    if (socket != null) socket.close();
+                } catch (IOException e2) {
+                    e2.printStackTrace();
+                }
+                inputListenerThread.interrupt();
+
+                final ArrayList<Integer> copyRequestList = new ArrayList<>(requestList);
+                final ArrayList<Bundle> copyRequestBundleList = new ArrayList<>(requestBundleList);
+                while (requestList.size() > 0) {
+                    requestList.remove(0);
+                    requestBundleList.remove(0);
+                }
+                mainThreadHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        Runnable retryRunnable = new Runnable() {
                             @Override
                             public void run() {
-                                for (OnConnectionChangeListener listener : connectionChangeListeners) {
-                                    listener.onDisconnected();
-                                }
+                                requestList.addAll(copyRequestList);
+                                requestBundleList.addAll(copyRequestBundleList);
+                                outputThread.start();
                             }
-                        });
+                        };
+                        for (OnConnectionChangeListener listener : connectionChangeListeners) {
+                            listener.onDisconnected(retryRunnable);
+                        }
                     }
-                    proccesing = false;
-                }
-            }).start();
+                });
+            }
+            proccesing = false;
+
         }
     }
 }
