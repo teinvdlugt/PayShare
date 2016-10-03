@@ -1,0 +1,8 @@
+Instructions for getting server running:
+	1. Make sure npm, nodeJS and mongoDB are installed;
+	2. Open terminal on this folder
+	3. If it is the first execution run "npm install" to install all dependencies on the folder
+	4. Run mongoDB if not already running
+	5. Start server with "npm start", or "node main" to use flags (type "node main -h" to see available options)
+	6. Select interface to run server on
+	7. All set!!

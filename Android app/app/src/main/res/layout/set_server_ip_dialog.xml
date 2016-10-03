@@ -11,8 +11,11 @@
         android:hint="@string/name">
 
         <android.support.design.widget.TextInputEditText
-            android:id="@+id/new_list_name"
+            android:id="@+id/server_ip"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:digits="0123456789."
+            android:hint="Server IP"
+            android:inputType="number" />
     </android.support.design.widget.TextInputLayout>
 </LinearLayout>

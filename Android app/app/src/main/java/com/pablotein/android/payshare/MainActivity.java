@@ -21,6 +21,8 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -100,6 +102,30 @@ public class MainActivity extends AppCompatActivity {
 
     RecyclerView listRecyclerView;
     FloatingActionButton addListFAB;
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add("Set server IP (debug)");
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                .setTitle("Set server IP")
+                .setView(R.layout.set_server_ip_dialog)
+                .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        PreferenceManager.getDefaultSharedPreferences(MainActivity.this).edit().putString("IP", ((EditText) ((AlertDialog) dialog).findViewById(R.id.server_ip)).getText().toString()).apply();
+                        Snackbar.make(findViewById(R.id.parent), "Changes will be applied on app restart", Snackbar.LENGTH_LONG).show();
+                    }
+                })
+                .create();
+        dialog.show();
+        ((EditText) dialog.findViewById(R.id.server_ip)).setText(PreferenceManager.getDefaultSharedPreferences(this).getString("IP", ""));
+        return true;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
