@@ -3,15 +3,20 @@ package com.pablotein.android.payshare;
 import android.app.ProgressDialog;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
+import android.widget.EditText;
+import android.widget.Toast;
 
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -87,6 +92,25 @@ public class LoginActivity extends AppCompatActivity {
                 checkTabletLayout();
             }
         });
+
+        findViewById(R.id.change_ip_button).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AlertDialog dialog = new AlertDialog.Builder(LoginActivity.this)
+                        .setTitle("Set server IP")
+                        .setView(R.layout.set_server_ip_dialog)
+                        .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                PreferenceManager.getDefaultSharedPreferences(LoginActivity.this).edit().putString("IP", ((EditText) ((AlertDialog) dialog).findViewById(R.id.server_ip)).getText().toString()).apply();
+                                Toast.makeText(LoginActivity.this, "Changes will be applied on app restart", Toast.LENGTH_LONG).show();
+                            }
+                        })
+                        .create();
+                dialog.show();
+                ((EditText) dialog.findViewById(R.id.server_ip)).setText(PreferenceManager.getDefaultSharedPreferences(LoginActivity.this).getString("IP", ""));
+            }
+        });
     }
 
     private void checkTabletLayout() {
@@ -111,6 +135,8 @@ public class LoginActivity extends AppCompatActivity {
                     @Override
                     public void onLogin() {
                         progressDialog.dismiss();
+                        Intent intent = new Intent(LoginActivity.this,MainActivity.class);
+                        startActivity(intent);
                         LoginActivity.this.finish();
                     }
                 });

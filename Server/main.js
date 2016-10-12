@@ -115,10 +115,12 @@ if (cluster.isMaster) {
 		
 		if(debug)console.log("New connection from "+socket.remoteAddress);
 		
-		sessionSub = null;
+		//sessionSub = null;
+		sessionUserId = null;
 		
 		function sendInfo(id){
-			db_users.find({sub:sessionSub}).toArray(function(error,result){
+			//db_users.find({sub:sessionSub}).toArray(function(error,result){
+			db_users.find({_id:sessionUserId}).toArray(function(error,result){
 				try{
 					if(error != null)throw new Error("Couldn't get from db: "+error);
 					if(result.length<1)throw new Error("No users found");
@@ -183,22 +185,29 @@ if (cluster.isMaster) {
 						try{
 							if (!error) {
 								if(debug)console.log("User info: "+JSON.stringify(tokenInfo));
-								db_users.updateOne({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email,lists:[]}},{upsert:true},function(error,results){
-									if(error != null)throw new Error("Couldn't put into db: "+error);
-									db_sessions.insert({sub:tokenInfo.sub,key:crypto.randomBytes(16).toString('hex')},function(error,inserted){
-										try{
-											if(error != null)throw new Error("Couldn't put into db: "+error);
-											if(debug)console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
-											answer = Buffer.allocUnsafe(32+24+2);
-											answer[0] = 3;
-											answer[1] = data[1];
-											answer.write(inserted.ops[0]._id.toString(),2,inserted.ops[0]._id.toString().length);
-											answer.write(inserted.ops[0].key,26,inserted.ops[0].key.length);
-											send(answer);
-											sessionSub = inserted.ops[0].sub;
-											sendInfo(0);
-										}catch(error){handleError(error);}
-									});
+								db_users.update({sub:tokenInfo.sub},{$set:{locale:tokenInfo.locale,sub:tokenInfo.sub,name:tokenInfo.given_name,email:tokenInfo.email,lists:[]}},{upsert:true},function(error,results){
+									try{
+										if(error != null)throw new Error("Couldn't put into db: "+error);
+										db_users.find({sub:tokenInfo.sub}).toArray(function(error,results){
+											try{
+												db_sessions.insert({uID:results[0]._id,key:crypto.randomBytes(16).toString('hex')},function(error,inserted){
+													try{
+														if(error != null)throw new Error("Couldn't put into db: "+error);
+														if(debug)console.log("New session: "+inserted.ops[0]._id+" - "+inserted.ops[0].key);
+														answer = Buffer.allocUnsafe(32+24+2);
+														answer[0] = 3;
+														answer[1] = data[1];
+														answer.write(inserted.ops[0]._id.toString(),2,inserted.ops[0]._id.toString().length);
+														answer.write(inserted.ops[0].key,26,inserted.ops[0].key.length);
+														send(answer);
+														sessionUserId = inserted.ops[0].uID
+														//sessionSub = inserted.ops[0].sub;
+														sendInfo(0);
+													}catch(error){handleError(error);}
+												});
+											}catch(error){handleError(error);}
+										});
+									}catch(error){handleError(error);}
 									//if(debug)console.log(results);
 								});
 								//Download profile image and store into db
@@ -237,8 +246,9 @@ if (cluster.isMaster) {
 								send(answer);
 								if(debug)console.log("Login error");
 							}else{
-								sessionSub = result[0].sub;
-								if(debug)console.log("Session sub: "+sessionSub);
+								//sessionSub = result[0].sub;
+								sessionUserId = result[0].uID;
+								if(debug)console.log("Session uID: "+sessionUserId);
 								answer = Buffer.from([4,data[1],1]);
 								send(answer);
 								sendInfo(data[1]);
@@ -253,7 +263,7 @@ if (cluster.isMaster) {
 					break;
 				case 6:
 					//if(data.length!=24+2) throw new Error("Size not match ("+data.length+")");
-					console.log("Got image request");
+					if(debug)console.log("Got image request");
 					limit = 24+2;
 					//if(data.length > limit){processData(data.slice(limit));}
 					id = data.toString('utf8',2,26);
@@ -281,8 +291,8 @@ if (cluster.isMaster) {
 				case 7:
 					limit = 2;
 					//if(data.length > limit){processData(data.slice(limit));}
-					if(sessionSub == null)throw new Error("User not logged trying to get info");
-					db_users.find({sub:sessionSub}).toArray(function(error,result){
+					if(sessionUserId == null)throw new Error("User not logged trying to get info");
+					db_users.find({_id:sessionUserId}).toArray(function(error,result){
 						try{
 							if(error != null)throw new Error("Couldn't get from db: "+error);
 							ids = [];
@@ -323,21 +333,66 @@ if (cluster.isMaster) {
 					size = data.readUInt16BE(2);
 					if(size > data.length-4) throw new Error("Size was bigger than available");
 					limit = 4+size;
-					if(sessionSub == null)throw new Error("User not logged trying to get info");
+					if(sessionUserId == null)throw new Error("User not logged trying to get info");
 					//if(data.length > limit){processData(data.slice(limit));}
 					name = data.toString('utf8', 4, size+4);
 					if(name.length < 100){
-						db_lists.insert({name:name},function(error,result){
+						db_lists.insert({name:name,public:false,access_by:[sessionUserId],currency:"EUR",items:[{name:"Potatoes",by:sessionUserId,price:5.12,amount:5}]},function(error,result){
 							if(error != null)throw new Error("Couldn't get from db: "+error);
 							//console.log("New item: "+JSON.stringify(data));
-							db_users.updateOne({sub:sessionSub},{$push:{lists:{id:result.ops[0]._id,type:1}}},{upsert:false},function(error,results){
-								console.log("Inserted");
+							db_users.updateOne({_id:sessionUserId},{$push:{lists:{id:result.ops[0]._id,type:1}}},{upsert:false},function(error,results){
+								if(debug)console.log("New list inserted");
 								processData(Buffer.from([7,data[1]]));
 							});
 						});
 					}else{
 						throw new Error("List name was bigger than expected");
 					}
+					break;
+				case 9:
+					limit = 2+24;
+					if(sessionUserId == null)throw new Error("User not logged trying to get info");
+					id = data.toString('utf8',2,26);
+					_id:mongo.ObjectId(id);
+					
+					db_lists.find({_id:mongo.ObjectId(id)}).toArray(function(error,result){
+						try{
+							if(error != null)throw new Error("Couldn't get from db: "+error);
+							accessible = false;
+							result = result[0];
+							if(!(result.public || result.access_by.indexOf(sessionUserId) > -1)){
+								size = 4;
+								for(vez=0;vez<result.items.length;vez++){
+									size+= 24+4+2;
+									size+= Buffer.byteLength(result.items[vez].name);
+								}
+								
+								answer = Buffer.alloc(size);
+								answer[0] = 9;
+								answer[1] = data[1];
+								answer[2] = 1;
+								answer[3] = result.items.length;
+								offset = 4;
+								for(vez=0;vez<result.items.length;vez++){
+									nameSize = Buffer.byteLength(result.items[vez].name);
+									answer.write(result.items[vez].by.toString(),offset,24);
+									answer[offset+24] = nameSize;
+									answer.write(result.items[vez].name,offset+25,nameSize);
+									offset += nameSize+25;
+									answer.writeFloatBE(result.items[vez].price,offset);
+									answer[offset+4] = result.items[vez].amount;
+									offset += 5;
+								}
+							}else{
+								if(debug)console.log("No list found");
+								answer = Buffer.alloc(size);
+								answer[0] = 9;
+								answer[1] = data[1];
+								answer[2] = 0;
+							}
+							send(answer);
+						}catch(error){handleError(error);}
+					});
 					break;
 				}
 				

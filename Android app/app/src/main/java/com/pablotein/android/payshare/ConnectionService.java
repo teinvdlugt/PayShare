@@ -34,8 +34,8 @@ public class ConnectionService extends Service {
     private static int SERVER_PORT = 1234, SERVER_TIMEOUT = 2000;
     private String SERVER_IP = "192.168.1.35";
 
-    public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_GET_IMAGE = 6, REQUEST_GET_LISTS = 7, REQUEST_NEW_LIST = 8;
-    public static final String EXTRA_LOGIN_GOOGLE_TOKEN = "ExtraLoginGoogleToken", EXTRA_USER_ID = "ExtraUserID", EXTRA_NAME = "ExtraName";
+    public static final int REQUEST_INFO = 0, REQUEST_LOGIN_GOOGLE = 1, REQUEST_GET_IMAGE = 6, REQUEST_GET_LISTS = 7, REQUEST_NEW_LIST = 8, REQUEST_GET_LIST_ITEMS = 9;
+    public static final String EXTRA_LOGIN_GOOGLE_TOKEN = "ExtraLoginGoogleToken", EXTRA_USER_ID = "ExtraUserID", EXTRA_LIST_ID = "ExtraListId", EXTRA_NAME = "ExtraName";
 
     public interface OnConnectionChangeListener {
         void onConnected();
@@ -113,7 +113,7 @@ public class ConnectionService extends Service {
         super.onCreate();
         mainThreadHandler = new Handler();
         Log.v(TAG, "New instance (" + String.valueOf(this) + ")");
-        SERVER_IP = PreferenceManager.getDefaultSharedPreferences(this).getString("IP",SERVER_IP);
+        SERVER_IP = PreferenceManager.getDefaultSharedPreferences(this).getString("IP", SERVER_IP);
     }
 
     Thread inputListenerThread = new Thread(new Runnable() {
@@ -227,7 +227,7 @@ public class ConnectionService extends Service {
                             for (char vez = 0; vez < size; vez++) {
                                 buffer[vez] = (byte) inputStream.read();
                             }
-                            if(buffer.length > 0) {
+                            if (buffer.length > 0) {
                                 final Bitmap result = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
                                 File file = new File(getCacheDir().getPath() + "/images/profile/" + id);
                                 file.getParentFile().mkdirs();
@@ -241,7 +241,7 @@ public class ConnectionService extends Service {
                                     }
                                 });
                             }
-                            Log.v(TAG,"Received image");
+                            Log.v(TAG, "Received image");
                         }
                         break;
                         case 7: {
@@ -267,6 +267,27 @@ public class ConnectionService extends Service {
                                     listsReceivedListener.onListsReceived(list);
                                 }
                             });
+                        }
+                        break;
+                        case 9:{
+                            inputStream.read();
+                            if(inputStream.read() == 1){
+                                int itemsCount = inputStream.read();
+                                for (int vez = 0; vez < itemsCount; vez++) {
+                                    byte[] byidBuffer = new byte[24];
+                                    inputStream.read(byidBuffer,0,24);
+                                    int nameSize = inputStream.read();
+                                    byte[] nameBuffer = new byte[nameSize];
+                                    inputStream.read(nameBuffer,0,nameSize);
+                                    float price = Float.intBitsToFloat(inputStream.read() << 24 | inputStream.read() << 16 | inputStream.read() << 8 | inputStream.read());
+                                    byte amount = (byte)inputStream.read();
+                                    Log.v("Item",new String(nameBuffer, "UTF-8")+ " - "+new String(byidBuffer, "UTF-8")+ " - "+String.valueOf(price)+" - "+String.valueOf(amount));
+                                    //list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer)));
+                                }
+                            }else{
+                                //TODO handle error getting list
+                                Log.v("Item","none");
+                            }
                         }
                         break;
                     }
@@ -394,6 +415,13 @@ public class ConnectionService extends Service {
                             buffer.put(new byte[]{8, 0});
                             buffer.putShort((short) name.length);
                             buffer.put(name);
+                            data = buffer.array();
+                        }
+                        break;
+                        case REQUEST_GET_LIST_ITEMS: {
+                            ByteBuffer buffer = ByteBuffer.allocate(2 + 24);
+                            buffer.put(new byte[]{9, 0});
+                            buffer.put(requestBundleList.get(0).getString(EXTRA_LIST_ID).getBytes("UTF-8"));
                             data = buffer.array();
                         }
                         break;

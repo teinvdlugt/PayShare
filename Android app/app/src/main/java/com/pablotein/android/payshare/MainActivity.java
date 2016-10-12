@@ -20,7 +20,6 @@ import android.support.v7.widget.RecyclerView;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -132,10 +131,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        //Connect to connectionService
-        Intent intent = new Intent(this, ConnectionService.class);
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-
         updateNameEmail(PreferenceManager.getDefaultSharedPreferences(this));
 
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(new SharedPreferences.OnSharedPreferenceChangeListener() {
@@ -147,10 +142,11 @@ public class MainActivity extends AppCompatActivity {
         if (!PreferenceManager.getDefaultSharedPreferences(this).contains("login_id")/* || true*/) {//Force login screen to show even if already logged for debugging purposes
             Intent startLoginIntent = new Intent(this, LoginActivity.class);
             startActivity(startLoginIntent);
+            finish();
         }
         listRecyclerView = (RecyclerView) findViewById(R.id.listRecyclerView);
         listRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        listRecyclerView.setAdapter(new ListRecyclerViewAdapter());
+        listRecyclerView.setAdapter(new ListRecyclerViewAdapter(this));
         addListFAB = (FloatingActionButton) findViewById(R.id.addListFAB);
         addListFAB.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -199,10 +195,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
+    protected void onResume() {
+        super.onResume();
+        //Connect to connectionService
+        Intent intent = new Intent(this, ConnectionService.class);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
         connectionServiceBinder.removeOnConnectionChangeListener(connectionChangeListener);
         connectionServiceBinder.removeOnImageDownloadedListener(imageDownloadedListener);
         unbindService(serviceConnection);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
     }
 }

@@ -1,5 +1,7 @@
 package com.pablotein.android.payshare;
 
+import android.content.Context;
+import android.content.Intent;
 import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -8,16 +10,17 @@ import android.widget.TextView;
 
 import java.util.ArrayList;
 
-public class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapter.ListRecyclerViewHolder> {
+class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapter.ListRecyclerViewHolder> {
     private ArrayList<ListRecyclerItem> list = new ArrayList<>();
     private static final int TYPE_NORMAL = 1, TYPE_NONE = 2;
     private boolean noItems = true;
+    private Context context;
 
     /*public ListRecyclerViewAdapter(ArrayList<ListRecyclerItem> list) {
         this.list = list;
     }*/
 
-    public void setLists(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
+    void setLists(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
         for (int vez = 0; vez < lists.size(); vez++) {
             if (!containsId(lists.get(vez).id)) {
                 list.add(lists.get(vez));
@@ -51,43 +54,49 @@ public class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerVi
         }
     }
 
-    /*public void addElement(ListRecyclerItem item) {
-        list.add(item);
-        notifyItemInserted(list.size() - 1);
-        if (noItems) {
-            noItems = false;
-            notifyItemRemoved(0);
-        }
-    }*/
-
-    public boolean containsId(String id) {
+    private boolean containsId(String id) {
         for (int vez = 0; vez < list.size(); vez++) {
             if (list.get(vez).id.equals(id)) return true;
         }
         return false;
     }
 
-    public static class ListRecyclerItem {
+    static class ListRecyclerItem {
         String name, id;
 
-        public ListRecyclerItem(String name, String id) {
+        ListRecyclerItem(String name, String id) {
             this.name = name;
             this.id = id;
         }
     }
 
-    public class ListRecyclerViewHolder extends RecyclerView.ViewHolder {
+    class ListRecyclerViewHolder extends RecyclerView.ViewHolder {
         TextView nameTextView;
 
-        public ListRecyclerViewHolder(View view) {
+        ListRecyclerViewHolder(View view) {
             super(view);
             nameTextView = (TextView) view.findViewById(R.id.nameTextView);
         }
     }
 
+    ListRecyclerViewAdapter(Context context) {
+        this.context = context;
+    }
+
     @Override
-    public void onBindViewHolder(ListRecyclerViewHolder holder, int position) {
-        if (holder.nameTextView != null) holder.nameTextView.setText(list.get(position).name);
+    public void onBindViewHolder(final ListRecyclerViewHolder holder, int position) {
+        if (!noItems) {
+            holder.nameTextView.setText(list.get(position).name);
+            holder.itemView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Intent intent = new Intent(context, ListActivity.class);
+                    intent.putExtra(ConnectionService.EXTRA_LIST_ID, list.get(holder.getAdapterPosition()).id);
+                    intent.putExtra(ConnectionService.EXTRA_NAME, list.get(holder.getAdapterPosition()).name);
+                    context.startActivity(intent);
+                }
+            });
+        }
     }
 
     @Override

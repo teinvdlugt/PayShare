@@ -37,5 +37,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="16dp" />
+        <Button
+            android:id="@+id/change_ip_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:text="Set server IP (debug)"/>
     </LinearLayout>
 </LinearLayout>
