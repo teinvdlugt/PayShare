@@ -12,6 +12,7 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -67,6 +68,8 @@ public class MainActivity extends AppCompatActivity {
             updateNameEmail(PreferenceManager.getDefaultSharedPreferences(MainActivity.this));//TODO solve, Quick fix for solving preference change listener not being called
         }
     };
+
+    boolean bound = false;
     ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -75,13 +78,15 @@ public class MainActivity extends AppCompatActivity {
             connectionServiceBinder.addOnImageDownloadedListener(imageDownloadedListener);
             connectionServiceBinder.setOnListsReceivedListener(new ConnectionService.OnListsReceivedListener() {
                 @Override
-                public void onListsReceived(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
-                    ((ListRecyclerViewAdapter) listRecyclerView.getAdapter()).setLists(lists);
+                public void onListsReceived(ArrayList<ListsRecyclerViewAdapter.ListRecyclerItem> lists) {
+                    swipeRefreshLayout.setRefreshing(false);
+                    ((ListsRecyclerViewAdapter) listRecyclerView.getAdapter()).setLists(lists);
                 }
             });
             connectionServiceBinder.sendRequest(ConnectionService.REQUEST_INFO, null);//Request server version (as test)
             if (PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("user_id", null) != null)
                 connectionServiceBinder.sendRequest(ConnectionService.REQUEST_GET_LISTS, null);//Request list of lists if user is logged
+            bound = true;
             /*Bundle extras = new Bundle();
             extras.putString(ConnectionService.EXTRA_USER_ID,PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("user_id",null));
             if(extras.getString(ConnectionService.EXTRA_USER_ID) != null)connectionServiceBinder.sendRequest(ConnectionService.REQUEST_IMAGE,extras);*/
@@ -89,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-
+            bound = false;
         }
     };
 
@@ -100,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     RecyclerView listRecyclerView;
+    SwipeRefreshLayout swipeRefreshLayout;
     FloatingActionButton addListFAB;
 
     @Override
@@ -131,6 +137,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        Intent intent = new Intent(this, ConnectionService.class);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+
         updateNameEmail(PreferenceManager.getDefaultSharedPreferences(this));
 
         PreferenceManager.getDefaultSharedPreferences(this).registerOnSharedPreferenceChangeListener(new SharedPreferences.OnSharedPreferenceChangeListener() {
@@ -144,9 +153,19 @@ public class MainActivity extends AppCompatActivity {
             startActivity(startLoginIntent);
             finish();
         }
+
         listRecyclerView = (RecyclerView) findViewById(R.id.listRecyclerView);
         listRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        listRecyclerView.setAdapter(new ListRecyclerViewAdapter(this));
+        listRecyclerView.setAdapter(new ListsRecyclerViewAdapter(this));
+
+        swipeRefreshLayout = (SwipeRefreshLayout)findViewById(R.id.swipeRefreshLayout);
+        swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                connectionServiceBinder.sendRequest(ConnectionService.REQUEST_GET_LISTS, null);
+            }
+        });
+
         addListFAB = (FloatingActionButton) findViewById(R.id.addListFAB);
         addListFAB.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -195,23 +214,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        //Connect to connectionService
-        Intent intent = new Intent(this, ConnectionService.class);
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        connectionServiceBinder.removeOnConnectionChangeListener(connectionChangeListener);
-        connectionServiceBinder.removeOnImageDownloadedListener(imageDownloadedListener);
-        unbindService(serviceConnection);
-    }
-
-    @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (bound) {
+            connectionServiceBinder.removeOnConnectionChangeListener(connectionChangeListener);
+            connectionServiceBinder.removeOnImageDownloadedListener(imageDownloadedListener);
+            unbindService(serviceConnection);
+        }
     }
 }

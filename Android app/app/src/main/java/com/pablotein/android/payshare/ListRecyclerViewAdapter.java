@@ -1,8 +1,8 @@
 package com.pablotein.android.payshare;
 
 import android.content.Context;
-import android.content.Intent;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,22 +15,23 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
     private static final int TYPE_NORMAL = 1, TYPE_NONE = 2;
     private boolean noItems = true;
     private Context context;
+    private ListSettings settings;
 
-    /*public ListRecyclerViewAdapter(ArrayList<ListRecyclerItem> list) {
-        this.list = list;
-    }*/
-
-    void setLists(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists) {
-        for (int vez = 0; vez < lists.size(); vez++) {
-            if (!containsId(lists.get(vez).id)) {
-                list.add(lists.get(vez));
+    void setItems(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> items) {
+        for (int vez = 0; vez < items.size(); vez++) {
+            int position = containsId(items.get(vez).id);
+            if (position == -1) {
+                list.add(items.get(vez));
                 notifyItemInserted(list.size() - 1);
+            } else if (!list.get(position).equals(items.get(vez))) {
+                list.set(position, items.get(vez));
+                notifyItemChanged(position);
             }
         }
         for (int vez = 0; vez < list.size(); vez++) {
             boolean contains = false;
-            for (int vez1 = 0; vez1 < lists.size(); vez1++) {
-                if (list.get(vez).id.equals(lists.get(vez1).id)) {
+            for (int vez1 = 0; vez1 < items.size(); vez1++) {
+                if (list.get(vez).id.equals(items.get(vez1).id)) {
                     contains = true;
                     break;
                 }
@@ -54,28 +55,55 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
         }
     }
 
-    private boolean containsId(String id) {
+    private int containsId(String id) {
         for (int vez = 0; vez < list.size(); vez++) {
-            if (list.get(vez).id.equals(id)) return true;
+            if (list.get(vez).id.equals(id)) return vez;
         }
-        return false;
+        return -1;
     }
 
     static class ListRecyclerItem {
-        String name, id;
+        String name, byID, id;
+        float price;
+        byte amount;
 
-        ListRecyclerItem(String name, String id) {
+        ListRecyclerItem(String name, String id, String byID, float price, byte amount) {
             this.name = name;
+            this.byID = byID;
             this.id = id;
+            this.price = price;
+            this.amount = amount;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof ListRecyclerItem) {
+                ListRecyclerItem item = (ListRecyclerItem) obj;
+                return (item.name.equals(this.name) && item.byID.equals(this.byID) && item.id.equals(this.id) && item.price == this.price && item.amount == this.amount);
+            } else {
+                return super.equals(obj);
+            }
+        }
+    }
+
+    static class ListSettings {
+        String currency, name, parsedCurrency;
+        boolean isPublic;
+
+        ListSettings(String name, boolean isPublic, String currency) {
+            this.currency = currency;
+            this.name = name;
+            this.isPublic = isPublic;
         }
     }
 
     class ListRecyclerViewHolder extends RecyclerView.ViewHolder {
-        TextView nameTextView;
+        TextView nameTextView, priceTextView;
 
         ListRecyclerViewHolder(View view) {
             super(view);
             nameTextView = (TextView) view.findViewById(R.id.nameTextView);
+            priceTextView = (TextView) view.findViewById(R.id.priceTextView);
         }
     }
 
@@ -87,15 +115,7 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
     public void onBindViewHolder(final ListRecyclerViewHolder holder, int position) {
         if (!noItems) {
             holder.nameTextView.setText(list.get(position).name);
-            holder.itemView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    Intent intent = new Intent(context, ListActivity.class);
-                    intent.putExtra(ConnectionService.EXTRA_LIST_ID, list.get(holder.getAdapterPosition()).id);
-                    intent.putExtra(ConnectionService.EXTRA_NAME, list.get(holder.getAdapterPosition()).name);
-                    context.startActivity(intent);
-                }
-            });
+            holder.priceTextView.setText(String.valueOf(list.get(position).price) + " " + settings.parsedCurrency);//TODO update currecy/price order depending on localization
         }
     }
 
@@ -106,27 +126,24 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
 
     @Override
     public ListRecyclerViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-        /*View view;
-        switch (viewType) {
-            case TYPE_NORMAL:
-                view = LayoutInflater.from(parent.getContext()).inflate(R.layout.list_recycler_item, parent, false);
-                break;
-            case TYPE_NONE:
-            default:
-                RecyclerView.LayoutParams params = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                params.topMargin = params.bottomMargin = params.leftMargin = params.rightMargin = ;
-                view = new TextView(parent.getContext());
-                view.setLayoutParams(params);
-                ((TextView) view).setText("No items found");
-                ((TextView) view).setGravity(Gravity.CENTER);
-                break;
-        }
-        return new ListRecyclerViewHolder(view);*/
         return new ListRecyclerViewHolder(LayoutInflater.from(parent.getContext()).inflate(viewType == TYPE_NORMAL ? R.layout.list_recycler_item : R.layout.list_recycler_none_message, parent, false));
     }
 
     @Override
     public int getItemViewType(int position) {
         return noItems ? TYPE_NONE : TYPE_NORMAL;
+    }
+
+    public void setSettings(ListSettings settings) {
+        this.settings = settings;
+        switch (settings.currency) {
+            case "EUR":
+                this.settings.parsedCurrency = "€";
+                break;
+            case "USD":
+                this.settings.parsedCurrency = "$";
+                break;
+            //TODO add currencies
+        }
     }
 }

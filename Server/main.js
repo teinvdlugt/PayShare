@@ -337,7 +337,7 @@ if (cluster.isMaster) {
 					//if(data.length > limit){processData(data.slice(limit));}
 					name = data.toString('utf8', 4, size+4);
 					if(name.length < 100){
-						db_lists.insert({name:name,public:false,access_by:[sessionUserId],currency:"EUR",items:[{name:"Potatoes",by:sessionUserId,price:5.12,amount:5}]},function(error,result){
+						db_lists.insert({name:name,public:false,access_by:[sessionUserId],currency:"EUR",items:[{name:"Potatoes",by:sessionUserId,price:5.12,amount:5,_id:new mongo.ObjectId()}]},function(error,result){
 							if(error != null)throw new Error("Couldn't get from db: "+error);
 							//console.log("New item: "+JSON.stringify(data));
 							db_users.updateOne({_id:sessionUserId},{$push:{lists:{id:result.ops[0]._id,type:1}}},{upsert:false},function(error,results){
@@ -361,9 +361,10 @@ if (cluster.isMaster) {
 							accessible = false;
 							result = result[0];
 							if(!(result.public || result.access_by.indexOf(sessionUserId) > -1)){
-								size = 4;
+								nameSize = Buffer.byteLength(result.name);
+								size = 9+nameSize;
 								for(vez=0;vez<result.items.length;vez++){
-									size+= 24+4+2;
+									size+= 48+4+2;
 									size+= Buffer.byteLength(result.items[vez].name);
 								}
 								
@@ -371,14 +372,19 @@ if (cluster.isMaster) {
 								answer[0] = 9;
 								answer[1] = data[1];
 								answer[2] = 1;
-								answer[3] = result.items.length;
-								offset = 4;
+								answer[3] = nameSize;
+								answer.write(result.name,4,nameSize);
+								answer[4+nameSize] = result.public;
+								answer.write(result.currency,5+nameSize,3);
+								answer[8+nameSize] = result.items.length;
+								offset = 9+nameSize;
 								for(vez=0;vez<result.items.length;vez++){
 									nameSize = Buffer.byteLength(result.items[vez].name);
 									answer.write(result.items[vez].by.toString(),offset,24);
-									answer[offset+24] = nameSize;
-									answer.write(result.items[vez].name,offset+25,nameSize);
-									offset += nameSize+25;
+									answer.write(result.items[vez]._id.toString(),offset+24,24);
+									answer[offset+48] = nameSize;
+									answer.write(result.items[vez].name,offset+49,nameSize);
+									offset += nameSize+49;
 									answer.writeFloatBE(result.items[vez].price,offset);
 									answer[offset+4] = result.items[vez].amount;
 									offset += 5;

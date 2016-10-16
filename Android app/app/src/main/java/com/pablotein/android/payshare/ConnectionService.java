@@ -29,6 +29,7 @@ public class ConnectionService extends Service {
     ArrayList<OnImageDownloadedListener> imageDownloadedListeners = new ArrayList<>();
     OnLoginListener loginListener;
     OnListsReceivedListener listsReceivedListener;
+    OnListReceivedListener listReceivedListener;
 
     private static String TAG = "ConnectionService";
     private static int SERVER_PORT = 1234, SERVER_TIMEOUT = 2000;
@@ -46,7 +47,11 @@ public class ConnectionService extends Service {
     }
 
     public interface OnListsReceivedListener {
-        void onListsReceived(ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> lists);
+        void onListsReceived(ArrayList<ListsRecyclerViewAdapter.ListRecyclerItem> lists);
+    }
+
+    public interface OnListReceivedListener {
+        void onListsReceived(boolean available, ListRecyclerViewAdapter.ListSettings listSettings, ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> items);
     }
 
     public interface OnLoginListener {
@@ -84,6 +89,10 @@ public class ConnectionService extends Service {
 
         void setOnListsReceivedListener(OnListsReceivedListener listener) {
             ConnectionService.this.listsReceivedListener = listener;
+        }
+
+        void setOnListReceivedListener(OnListReceivedListener listener) {
+            ConnectionService.this.listReceivedListener = listener;
         }
     }
 
@@ -246,7 +255,7 @@ public class ConnectionService extends Service {
                         break;
                         case 7: {
                             inputStream.read();
-                            final ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> list = new ArrayList<>();
+                            final ArrayList<ListsRecyclerViewAdapter.ListRecyclerItem> list = new ArrayList<>();
                             int itemsCount = inputStream.read();
                             for (int vez = 0; vez < itemsCount; vez++) {
                                 byte[] idBuffer = new byte[24];
@@ -258,7 +267,7 @@ public class ConnectionService extends Service {
                                 for (int vez1 = 0; vez1 < nameSize; vez1++) {
                                     nameBuffer[vez1] = (byte) inputStream.read();
                                 }
-                                list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer)));
+                                list.add(new ListsRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer)));
                             }
                             Log.v(TAG, "Processed list, items: " + String.valueOf(itemsCount));
                             mainThreadHandler.post(new Runnable() {
@@ -269,24 +278,52 @@ public class ConnectionService extends Service {
                             });
                         }
                         break;
-                        case 9:{
+                        case 9: {
                             inputStream.read();
-                            if(inputStream.read() == 1){
+                            if (inputStream.read() == 1) {
+                                int listNameSize = inputStream.read();
+                                byte[] listNameBuffer = new byte[listNameSize];
+                                inputStream.read(listNameBuffer, 0, listNameSize);
+
+                                boolean isPublic = inputStream.read() == 1;
+
+                                byte[] currencyBuffer = new byte[3];
+                                inputStream.read(currencyBuffer, 0, 3);
+                                final ListRecyclerViewAdapter.ListSettings settings = new ListRecyclerViewAdapter.ListSettings(new String(listNameBuffer, "UTF-8"), isPublic, new String(currencyBuffer, "UTF-8"));
+
+                                final ArrayList<ListRecyclerViewAdapter.ListRecyclerItem> list = new ArrayList<>();
                                 int itemsCount = inputStream.read();
                                 for (int vez = 0; vez < itemsCount; vez++) {
                                     byte[] byidBuffer = new byte[24];
-                                    inputStream.read(byidBuffer,0,24);
+                                    inputStream.read(byidBuffer, 0, 24);
+
+                                    byte[] idBuffer = new byte[24];
+                                    inputStream.read(idBuffer, 0, 24);
+
                                     int nameSize = inputStream.read();
                                     byte[] nameBuffer = new byte[nameSize];
-                                    inputStream.read(nameBuffer,0,nameSize);
+                                    inputStream.read(nameBuffer, 0, nameSize);
+
                                     float price = Float.intBitsToFloat(inputStream.read() << 24 | inputStream.read() << 16 | inputStream.read() << 8 | inputStream.read());
-                                    byte amount = (byte)inputStream.read();
-                                    Log.v("Item",new String(nameBuffer, "UTF-8")+ " - "+new String(byidBuffer, "UTF-8")+ " - "+String.valueOf(price)+" - "+String.valueOf(amount));
+                                    byte amount = (byte) inputStream.read();
+
+                                    list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer, "UTF-8"), new String(byidBuffer, "UTF-8"), price, amount));
+                                    Log.v("Item", new String(nameBuffer, "UTF-8") + " - " + new String(byidBuffer, "UTF-8") + " - " + new String(idBuffer, "UTF-8") + " - " + String.valueOf(price) + " - " + String.valueOf(amount));
                                     //list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer)));
                                 }
-                            }else{
-                                //TODO handle error getting list
-                                Log.v("Item","none");
+                                mainThreadHandler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        listReceivedListener.onListsReceived(true, settings, list);
+                                    }
+                                });
+                            } else {
+                                mainThreadHandler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        listReceivedListener.onListsReceived(false, null, null);
+                                    }
+                                });
                             }
                         }
                         break;
