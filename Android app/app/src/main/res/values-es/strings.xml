@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PayShare</string>
+    <string name="archieved">Archivado</string>
+    <string name="connection_error">Error de conexión</string>
+    <string name="error_login_google">No se pudo iniciar sesión con Google</string>
+    <string name="loading">Cargando</string>
+    <string name="my_lists">Mis listas</string>
+    <string name="name">Nombre</string>
+    <string name="new_list">Nueva lista</string>
+    <string name="no_items">Ningún elemento</string>
+    <string name="ok">Aceptar</string>
+    <string name="retry">Reintentar</string>
+    <string name="shared_with_me">Compartido conmigo</string>
+    <string name="sign_in_with_google">Iniciar sesión con Google</string>
+</resources>

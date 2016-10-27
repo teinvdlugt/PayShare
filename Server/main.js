@@ -364,7 +364,7 @@ if (cluster.isMaster) {
 								nameSize = Buffer.byteLength(result.name);
 								size = 9+nameSize;
 								for(vez=0;vez<result.items.length;vez++){
-									size+= 48+4+2;
+									size+= 48+4+2+4;
 									size+= Buffer.byteLength(result.items[vez].name);
 								}
 								
@@ -387,7 +387,8 @@ if (cluster.isMaster) {
 									offset += nameSize+49;
 									answer.writeFloatBE(result.items[vez].price,offset);
 									answer[offset+4] = result.items[vez].amount;
-									offset += 5;
+									answer.writeUInt32BE(result.items[vez]._id.getTimestamp().getTime()/1000,offset+5);
+									offset += 9;
 								}
 							}else{
 								if(debug)console.log("No list found");

@@ -8,7 +8,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.text.DateFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Currency;
+import java.util.Date;
 
 class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapter.ListRecyclerViewHolder> {
     private ArrayList<ListRecyclerItem> list = new ArrayList<>();
@@ -66,13 +70,15 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
         String name, byID, id;
         float price;
         byte amount;
+        Date createdDate;
 
-        ListRecyclerItem(String name, String id, String byID, float price, byte amount) {
+        ListRecyclerItem(String name, String id, String byID, float price, byte amount, Date createdDate) {
             this.name = name;
             this.byID = byID;
             this.id = id;
             this.price = price;
             this.amount = amount;
+            this.createdDate = createdDate;
         }
 
         @Override
@@ -87,23 +93,27 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
     }
 
     static class ListSettings {
-        String currency, name, parsedCurrency;
+        String currency, name;
+        NumberFormat priceFormat;
         boolean isPublic;
 
         ListSettings(String name, boolean isPublic, String currency) {
             this.currency = currency;
             this.name = name;
             this.isPublic = isPublic;
+            priceFormat = NumberFormat.getCurrencyInstance();
+            priceFormat.setCurrency(Currency.getInstance(currency));
         }
     }
 
     class ListRecyclerViewHolder extends RecyclerView.ViewHolder {
-        TextView nameTextView, priceTextView;
+        TextView nameTextView, priceTextView, addedInfoTextView;
 
         ListRecyclerViewHolder(View view) {
             super(view);
             nameTextView = (TextView) view.findViewById(R.id.nameTextView);
             priceTextView = (TextView) view.findViewById(R.id.priceTextView);
+            addedInfoTextView = (TextView) view.findViewById(R.id.addedInfoTextView);
         }
     }
 
@@ -115,7 +125,8 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
     public void onBindViewHolder(final ListRecyclerViewHolder holder, int position) {
         if (!noItems) {
             holder.nameTextView.setText(list.get(position).name);
-            holder.priceTextView.setText(String.valueOf(list.get(position).price) + " " + settings.parsedCurrency);//TODO update currecy/price order depending on localization
+            holder.priceTextView.setText(settings.priceFormat.format(list.get(position).price));
+            holder.addedInfoTextView.setText(context.getString(R.string.added_on_by,DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(list.get(position).createdDate),"you"));
         }
     }
 
@@ -134,16 +145,11 @@ class ListRecyclerViewAdapter extends RecyclerView.Adapter<ListRecyclerViewAdapt
         return noItems ? TYPE_NONE : TYPE_NORMAL;
     }
 
-    public void setSettings(ListSettings settings) {
+    void setSettings(ListSettings settings) {
+        boolean update = this.settings != null && !settings.currency.equals(this.settings.currency);
         this.settings = settings;
-        switch (settings.currency) {
-            case "EUR":
-                this.settings.parsedCurrency = "€";
-                break;
-            case "USD":
-                this.settings.parsedCurrency = "$";
-                break;
-            //TODO add currencies
+        if (update) {
+            notifyItemRangeChanged(0, list.size());
         }
     }
 }

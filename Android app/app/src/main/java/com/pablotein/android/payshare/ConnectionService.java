@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Date;
 
 public class ConnectionService extends Service {
     IBinder binder = new ConnectionServiceBinder();
@@ -307,7 +308,10 @@ public class ConnectionService extends Service {
                                     float price = Float.intBitsToFloat(inputStream.read() << 24 | inputStream.read() << 16 | inputStream.read() << 8 | inputStream.read());
                                     byte amount = (byte) inputStream.read();
 
-                                    list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer, "UTF-8"), new String(byidBuffer, "UTF-8"), price, amount));
+                                    long UNIXDate = inputStream.read() << 24 | inputStream.read() << 16 | inputStream.read() << 8 | inputStream.read();
+                                    Date createdDate = new Date(UNIXDate*1000);
+
+                                    list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer, "UTF-8"), new String(byidBuffer, "UTF-8"), price, amount, createdDate));
                                     Log.v("Item", new String(nameBuffer, "UTF-8") + " - " + new String(byidBuffer, "UTF-8") + " - " + new String(idBuffer, "UTF-8") + " - " + String.valueOf(price) + " - " + String.valueOf(amount));
                                     //list.add(new ListRecyclerViewAdapter.ListRecyclerItem(new String(nameBuffer, "UTF-8"), new String(idBuffer)));
                                 }
